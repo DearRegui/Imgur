@@ -1,0 +1,1592 @@
+local ImGui = {
+	Version = "3.0.0",
+	Author = "Enhanced ImGui System",
+	
+	Animations = {
+		Buttons = {
+			MouseEnter = { BackgroundTransparency = 0.5 },
+			MouseLeave = { BackgroundTransparency = 0.7 }
+		},
+		Tabs = {
+			MouseEnter = { BackgroundTransparency = 0.5 },
+			MouseLeave = { BackgroundTransparency = 1 }
+		},
+		Inputs = {
+			MouseEnter = { BackgroundTransparency = 0 },
+			MouseLeave = { BackgroundTransparency = 0.5 }
+		},
+		WindowBorder = {
+			Selected = { Transparency = 0, Thickness = 1 },
+			Deselected = { Transparency = 0.7, Thickness = 1 }
+		},
+		GroupBox = {
+			Expand = { Size = UDim2.fromScale(1, 1) },
+			Collapse = { Size = UDim2.fromScale(1, 0) }
+		}
+	},
+	
+	Windows = {},
+	Themes = {},
+	CurrentTheme = "Dark",
+	Animation = TweenInfo.new(0.1),
+	UIAssetId = "rbxassetid://76246418997296",
+	
+	IsMobile = false,
+	DevicePlatform = nil,
+	TouchEnabled = false,
+	
+	DefaultThemes = {
+		Dark = {
+			BackgroundColor = Color3.fromRGB(15, 15, 15),
+			MainColor = Color3.fromRGB(25, 25, 25),
+			AccentColor = Color3.fromRGB(125, 85, 255),
+			OutlineColor = Color3.fromRGB(40, 40, 40),
+			FontColor = Color3.new(1, 1, 1),
+			SuccessColor = Color3.fromRGB(0, 255, 100),
+			ErrorColor = Color3.fromRGB(255, 50, 50),
+			WarningColor = Color3.fromRGB(255, 200, 0),
+			HeaderColor = Color3.fromRGB(30, 30, 30),
+			BorderColor = Color3.fromRGB(50, 50, 50),
+			HoverColor = Color3.fromRGB(35, 35, 35),
+			PressedColor = Color3.fromRGB(20, 20, 20)
+		},
+		Light = {
+			BackgroundColor = Color3.fromRGB(245, 245, 245),
+			MainColor = Color3.fromRGB(255, 255, 255),
+			AccentColor = Color3.fromRGB(125, 85, 255),
+			OutlineColor = Color3.fromRGB(200, 200, 200),
+			FontColor = Color3.new(0, 0, 0),
+			SuccessColor = Color3.fromRGB(0, 200, 80),
+			ErrorColor = Color3.fromRGB(220, 50, 50),
+			WarningColor = Color3.fromRGB(220, 180, 0),
+			HeaderColor = Color3.fromRGB(240, 240, 240),
+			BorderColor = Color3.fromRGB(180, 180, 180),
+			HoverColor = Color3.fromRGB(235, 235, 235),
+			PressedColor = Color3.fromRGB(225, 225, 225)
+		},
+		Ocean = {
+			BackgroundColor = Color3.fromRGB(10, 20, 35),
+			MainColor = Color3.fromRGB(15, 30, 50),
+			AccentColor = Color3.fromRGB(0, 150, 255),
+			OutlineColor = Color3.fromRGB(30, 60, 90),
+			FontColor = Color3.fromRGB(200, 220, 255),
+			SuccessColor = Color3.fromRGB(0, 255, 150),
+			ErrorColor = Color3.fromRGB(255, 80, 80),
+			WarningColor = Color3.fromRGB(255, 200, 50),
+			HeaderColor = Color3.fromRGB(20, 40, 60),
+			BorderColor = Color3.fromRGB(40, 80, 120),
+			HoverColor = Color3.fromRGB(20, 40, 70),
+			PressedColor = Color3.fromRGB(10, 25, 45)
+		},
+		Forest = {
+			BackgroundColor = Color3.fromRGB(20, 30, 20),
+			MainColor = Color3.fromRGB(30, 45, 30),
+			AccentColor = Color3.fromRGB(100, 200, 100),
+			OutlineColor = Color3.fromRGB(50, 70, 50),
+			FontColor = Color3.fromRGB(220, 255, 220),
+			SuccessColor = Color3.fromRGB(100, 255, 100),
+			ErrorColor = Color3.fromRGB(255, 80, 80),
+			WarningColor = Color3.fromRGB(255, 220, 100),
+			HeaderColor = Color3.fromRGB(35, 50, 35),
+			BorderColor = Color3.fromRGB(60, 90, 60),
+			HoverColor = Color3.fromRGB(40, 60, 40),
+			PressedColor = Color3.fromRGB(25, 35, 25)
+		},
+		Purple = {
+			BackgroundColor = Color3.fromRGB(25, 15, 35),
+			MainColor = Color3.fromRGB(35, 25, 50),
+			AccentColor = Color3.fromRGB(180, 100, 255),
+			OutlineColor = Color3.fromRGB(60, 40, 80),
+			FontColor = Color3.fromRGB(240, 220, 255),
+			SuccessColor = Color3.fromRGB(150, 255, 150),
+			ErrorColor = Color3.fromRGB(255, 80, 120),
+			WarningColor = Color3.fromRGB(255, 200, 100),
+			HeaderColor = Color3.fromRGB(40, 30, 55),
+			BorderColor = Color3.fromRGB(70, 50, 100),
+			HoverColor = Color3.fromRGB(45, 35, 65),
+			PressedColor = Color3.fromRGB(30, 20, 45)
+		}
+	}
+}
+
+local CloneRef = cloneref or function(x) return x end
+local function GetService(...)
+	return CloneRef(game:GetService(...))
+end
+
+function ImGui:Warn(...)
+	if self.NoWarnings then return end
+	return warn("[IMGUI]", ...)
+end
+
+local TweenService = GetService("TweenService")
+local UserInputService = GetService("UserInputService")
+local Players = GetService("Players")
+local CoreGui = GetService("CoreGui")
+local RunService = GetService("RunService")
+local TextService = GetService("TextService")
+local GuiService = GetService("GuiService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer.PlayerGui
+local Mouse = LocalPlayer:GetMouse()
+
+local IsStudio = RunService:IsStudio()
+ImGui.NoWarnings = not IsStudio
+
+function ImGui:DetectDevice()
+	local platform = UserInputService:GetPlatform()
+	self.DevicePlatform = platform
+	
+	if platform == Enum.Platform.Android or platform == Enum.Platform.IOS then
+		self.IsMobile = true
+		self.TouchEnabled = true
+	elseif UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+		self.IsMobile = true
+		self.TouchEnabled = true
+	else
+		self.IsMobile = false
+		self.TouchEnabled = UserInputService.TouchEnabled
+	end
+	
+	return self.IsMobile
+end
+
+ImGui:DetectDevice()
+
+function ImGui:CreateInstance(Class, Parent, Properties)
+	local Instance = Instance.new(Class, Parent)
+	for Key, Value in next, Properties or {} do
+		Instance[Key] = Value
+	end
+	return Instance
+end
+
+function ImGui:GetName(Name)
+	return string.format("%s_", Name)
+end
+
+function ImGui:Tween(Object, Properties, TweenInfoOverride, NoAnimation)
+	if NoAnimation then
+		for Key, Value in next, Properties do
+			Object[Key] = Value
+		end
+		return
+	end
+	
+	local Tween = TweenService:Create(Object, TweenInfoOverride or self.Animation, Properties)
+	Tween:Play()
+	return Tween
+end
+
+function ImGui:GetAnimation(Fast)
+	return Fast and TweenInfo.new(0.05) or self.Animation
+end
+
+function ImGui:ConnectHover(Config)
+	local Parent = Config.Parent
+	local OnInput = Config.OnInput or function() end
+	
+	local MouseHovering = false
+	
+	Parent.InputBegan:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseMovement or
+		   Input.UserInputType == Enum.UserInputType.Touch then
+			MouseHovering = true
+			OnInput(true, Input)
+		end
+	end)
+	
+	Parent.InputEnded:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseMovement or
+		   Input.UserInputType == Enum.UserInputType.Touch then
+			MouseHovering = false
+			OnInput(false, Input)
+		end
+	end)
+	
+	return {
+		IsHovering = function() return MouseHovering end
+	}
+end
+
+function ImGui:ApplyAnimations(Element, AnimType)
+	local Animations = self.Animations[AnimType]
+	if not Animations then return end
+	
+	self:ConnectHover({
+		Parent = Element,
+		OnInput = function(Hovering)
+			local Props = Hovering and Animations.MouseEnter or Animations.MouseLeave
+			self:Tween(Element, Props)
+		end
+	})
+end
+
+function ImGui:GetTextBounds(Text, Font, Size, MaxWidth)
+	local Params = Instance.new("GetTextBoundsParams")
+	Params.Text = Text
+	Params.Font = Font or Font.fromEnum(Enum.Font.Code)
+	Params.Size = Size or 14
+	Params.Width = MaxWidth or math.huge
+	
+	local Bounds = TextService:GetTextBoundsAsync(Params)
+	return Bounds.X, Bounds.Y
+end
+
+function ImGui:InitializeThemes()
+	for Name, Theme in pairs(self.DefaultThemes) do
+		self.Themes[Name] = Theme
+	end
+end
+
+function ImGui:AddTheme(Name, ThemeData)
+	if self.Themes[Name] then
+		self:Warn("Theme", Name, "already exists. Overwriting...")
+	end
+	self.Themes[Name] = ThemeData
+	return self
+end
+
+function ImGui:SetTheme(ThemeName)
+	local Theme = self.Themes[ThemeName]
+	if not Theme then
+		self:Warn("Theme", ThemeName, "not found!")
+		return self
+	end
+	
+	self.CurrentTheme = ThemeName
+	
+	for Window, Config in pairs(self.Windows) do
+		if Config.Colors then
+			Config.Colors = Theme
+			self:ApplyThemeToWindow(Window, Theme)
+		end
+	end
+	
+	return self
+end
+
+function ImGui:ApplyThemeToWindow(Window, Theme)
+	local function ApplyToElement(Element)
+		for Property, Color in pairs(Theme) do
+			if Element:IsA("GuiObject") then
+				pcall(function()
+					if string.find(Property, "Color") then
+						Element[Property] = Color
+					end
+				end)
+			end
+		end
+		
+		for _, Child in ipairs(Element:GetChildren()) do
+			ApplyToElement(Child)
+		end
+	end
+	
+	ApplyToElement(Window)
+end
+
+function ImGui:GetTheme(ThemeName)
+	return self.Themes[ThemeName or self.CurrentTheme]
+end
+
+function ImGui:ApplyDraggable(Window, DragHandle)
+	local Handle = DragHandle or Window
+	local Dragging = false
+	local DragStart = nil
+	local StartPos = nil
+	
+	local function UpdateDrag(Input)
+		if not Dragging then return end
+		
+		local Delta = Input.Position - DragStart
+		Window.Position = UDim2.new(
+			StartPos.X.Scale, StartPos.X.Offset + Delta.X,
+			StartPos.Y.Scale, StartPos.Y.Offset + Delta.Y
+		)
+	end
+	
+	Handle.InputBegan:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseButton1 or
+		   Input.UserInputType == Enum.UserInputType.Touch then
+			Dragging = true
+			DragStart = Input.Position
+			StartPos = Window.Position
+			
+			Input.Changed:Connect(function()
+				if Input.UserInputState == Enum.UserInputState.End then
+					Dragging = false
+				end
+			end)
+		end
+	end)
+	
+	Handle.InputChanged:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseMovement or
+		   Input.UserInputType == Enum.UserInputType.Touch then
+			UpdateDrag(Input)
+		end
+	end)
+end
+
+function ImGui:ApplyResizable(MinSize, Window, ResizeHandle, Config)
+	local Resizing = false
+	local ResizeStart = nil
+	local StartSize = nil
+	
+	ResizeHandle.InputBegan:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseButton1 or
+		   Input.UserInputType == Enum.UserInputType.Touch then
+			Resizing = true
+			ResizeStart = Input.Position
+			StartSize = Window.AbsoluteSize
+		end
+	end)
+	
+	ResizeHandle.InputEnded:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseButton1 or
+		   Input.UserInputType == Enum.UserInputType.Touch then
+			Resizing = false
+		end
+	end)
+	
+	UserInputService.InputChanged:Connect(function(Input)
+		if not Resizing then return end
+		if Input.UserInputType == Enum.UserInputType.MouseMovement or
+		   Input.UserInputType == Enum.UserInputType.Touch then
+			
+			local Delta = Input.Position - ResizeStart
+			local NewSize = Vector2.new(
+				math.max(StartSize.X + Delta.X, MinSize.X),
+				math.max(StartSize.Y + Delta.Y, MinSize.Y)
+			)
+			
+			Window.Size = UDim2.fromOffset(NewSize.X, NewSize.Y)
+			
+			if Config and Config.OnResize then
+				Config.OnResize(NewSize)
+			end
+		end
+	end)
+end
+
+function ImGui:CheckStyles(GuiObject, Class, Colors)
+	local ElementType = GuiObject.Name
+	GuiObject.Name = self:GetName(ElementType)
+	
+	local ColorOverwrites = Colors and Colors[ElementType]
+	if ColorOverwrites then
+		self:ApplyColors(ColorOverwrites, GuiObject, ElementType)
+	end
+	
+	for Key, Value in next, Class do
+		pcall(function()
+			GuiObject[Key] = Value
+		end)
+	end
+end
+
+function ImGui:ApplyColors(ColorOverwrites, GuiObject)
+	for Property, Value in pairs(ColorOverwrites) do
+		pcall(function()
+			GuiObject[Property] = Value
+		end)
+	end
+end
+
+function ImGui:MergeMetatables(Class, Instance)
+	local Metadata = {}
+	Metadata.__index = function(self, Key)
+		local suc, Value = pcall(function()
+			local Value = Instance[Key]
+			if typeof(Value) == "function" then
+				return function(...)
+					return Value(Instance, ...)
+				end
+			end
+			return Value
+		end)
+		return suc and Value or Class[Key]
+	end
+	
+	Metadata.__newindex = function(self, Key, Value)
+		local Key2 = Class[Key]
+		if Key2 ~= nil or typeof(Value) == "function" then
+			Class[Key] = Value
+		else
+			Instance[Key] = Value
+		end
+	end
+	
+	return setmetatable({}, Metadata)
+end
+
+function ImGui:ContainerClass(Frame, Class, Window)
+	local ContainerClass = Class or {}
+	local WindowConfig = self.Windows[Window]
+	
+	function ContainerClass:NewInstance(Instance, Class, Parent)
+		Class = Class or {}
+		Instance.Parent = Parent or Frame
+		Instance.Visible = true
+		
+		local Colors = WindowConfig and WindowConfig.Colors
+		ImGui:CheckStyles(Instance, Class, Colors)
+		
+		if Class.NewInstanceCallback then
+			Class.NewInstanceCallback(Instance)
+		end
+		
+		return ImGui:MergeMetatables(Class, Instance)
+	end
+	
+	function ContainerClass:Button(Config)
+		Config = Config or {}
+		local Button = ImGui:CreateInstance("TextButton", Frame, {
+			BackgroundColor3 = WindowConfig.Colors.MainColor,
+			BorderColor3 = WindowConfig.Colors.OutlineColor,
+			BorderSizePixel = 1,
+			Size = UDim2.new(Config.Size or UDim2.fromScale(1, 0), UDim2.fromOffset(0, 30)),
+			Text = Config.Text or "Button",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = Config.TextSize or 14,
+			Font = Enum.Font.Code,
+			AutoButtonColor = false
+		})
+		
+		ImGui:ApplyAnimations(Button, "Buttons")
+		
+		if Config.Callback then
+			Button.Activated:Connect(function()
+				Config.Callback(Button)
+			end)
+		end
+		
+		return self:NewInstance(Button, Config)
+	end
+	
+	function ContainerClass:Toggle(Config)
+		Config = Config or {}
+		local Container = ImGui:CreateInstance("Frame", Frame, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 30)
+		})
+		
+		local Label = ImGui:CreateInstance("TextLabel", Container, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -40, 1, 0),
+			Text = Config.Text or "Toggle",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 14,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local ToggleFrame = ImGui:CreateInstance("Frame", Container, {
+			BackgroundColor3 = WindowConfig.Colors.MainColor,
+			BorderColor3 = WindowConfig.Colors.OutlineColor,
+			BorderSizePixel = 1,
+			Position = UDim2.new(1, -35, 0.5, -10),
+			Size = UDim2.fromOffset(35, 20),
+			AnchorPoint = Vector2.new(0, 0.5)
+		})
+		
+		ImGui:CreateInstance("UICorner", ToggleFrame, {
+			CornerRadius = UDim.new(0, 10)
+		})
+		
+		local ToggleButton = ImGui:CreateInstance("Frame", ToggleFrame, {
+			BackgroundColor3 = WindowConfig.Colors.FontColor,
+			Size = UDim2.fromOffset(16, 16),
+			Position = UDim2.fromOffset(2, 2)
+		})
+		
+		ImGui:CreateInstance("UICorner", ToggleButton, {
+			CornerRadius = UDim.new(1, 0)
+		})
+		
+		local Value = Config.Default or false
+		
+		local function UpdateToggle(NewValue)
+			Value = NewValue
+			ImGui:Tween(ToggleButton, {
+				Position = NewValue and UDim2.fromOffset(17, 2) or UDim2.fromOffset(2, 2)
+			})
+			ImGui:Tween(ToggleFrame, {
+				BackgroundColor3 = NewValue and WindowConfig.Colors.AccentColor or WindowConfig.Colors.MainColor
+			})
+			
+			if Config.Callback then
+				Config.Callback(NewValue)
+			end
+		end
+		
+		ToggleFrame.InputBegan:Connect(function(Input)
+			if Input.UserInputType == Enum.UserInputType.MouseButton1 or
+			   Input.UserInputType == Enum.UserInputType.Touch then
+				UpdateToggle(not Value)
+			end
+		end)
+		
+		UpdateToggle(Value)
+		
+		local ToggleObject = self:NewInstance(Container, Config)
+		ToggleObject.SetValue = function(self, NewValue)
+			UpdateToggle(NewValue)
+			return self
+		end
+		ToggleObject.GetValue = function(self)
+			return Value
+		end
+		
+		return ToggleObject
+	end
+	
+	function ContainerClass:Slider(Config)
+		Config = Config or {}
+		local Container = ImGui:CreateInstance("Frame", Frame, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 50)
+		})
+		
+		local Label = ImGui:CreateInstance("TextLabel", Container, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 20),
+			Text = Config.Text or "Slider",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 14,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local ValueLabel = ImGui:CreateInstance("TextLabel", Container, {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(1, 0, 0, 0),
+			Size = UDim2.fromOffset(50, 20),
+			Text = tostring(Config.Default or 0),
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 14,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			AnchorPoint = Vector2.new(1, 0)
+		})
+		
+		local SliderFrame = ImGui:CreateInstance("Frame", Container, {
+			BackgroundColor3 = WindowConfig.Colors.MainColor,
+			BorderColor3 = WindowConfig.Colors.OutlineColor,
+			BorderSizePixel = 1,
+			Position = UDim2.fromOffset(0, 25),
+			Size = UDim2.new(1, 0, 0, 20)
+		})
+		
+		ImGui:CreateInstance("UICorner", SliderFrame, {
+			CornerRadius = UDim.new(0, 4)
+		})
+		
+		local SliderFill = ImGui:CreateInstance("Frame", SliderFrame, {
+			BackgroundColor3 = WindowConfig.Colors.AccentColor,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(0, 1)
+		})
+		
+		ImGui:CreateInstance("UICorner", SliderFill, {
+			CornerRadius = UDim.new(0, 4)
+		})
+		
+		local SliderButton = ImGui:CreateInstance("Frame", SliderFrame, {
+			BackgroundColor3 = WindowConfig.Colors.FontColor,
+			BorderSizePixel = 0,
+			Size = UDim2.fromOffset(12, 12),
+			Position = UDim2.new(0, -6, 0.5, 0),
+			AnchorPoint = Vector2.new(0, 0.5)
+		})
+		
+		ImGui:CreateInstance("UICorner", SliderButton, {
+			CornerRadius = UDim.new(1, 0)
+		})
+		
+		local Min = Config.Min or 0
+		local Max = Config.Max or 100
+		local Value = Config.Default or Min
+		local Dragging = false
+		
+		local function UpdateSlider(NewValue)
+			NewValue = math.clamp(NewValue, Min, Max)
+			Value = NewValue
+			
+			local Percent = (NewValue - Min) / (Max - Min)
+			SliderFill.Size = UDim2.fromScale(Percent, 1)
+			SliderButton.Position = UDim2.new(Percent, -6, 0.5, 0)
+			ValueLabel.Text = string.format("%.1f", NewValue)
+			
+			if Config.Callback then
+				Config.Callback(NewValue)
+			end
+		end
+		
+		local function HandleInput(Input)
+			if not Dragging then return end
+			
+			local RelativePos = (Input.Position.X - SliderFrame.AbsolutePosition.X) / SliderFrame.AbsoluteSize.X
+			RelativePos = math.clamp(RelativePos, 0, 1)
+			local NewValue = Min + (Max - Min) * RelativePos
+			
+			UpdateSlider(NewValue)
+		end
+		
+		SliderFrame.InputBegan:Connect(function(Input)
+			if Input.UserInputType == Enum.UserInputType.MouseButton1 or
+			   Input.UserInputType == Enum.UserInputType.Touch then
+				Dragging = true
+				HandleInput(Input)
+			end
+		end)
+		
+		SliderFrame.InputEnded:Connect(function(Input)
+			if Input.UserInputType == Enum.UserInputType.MouseButton1 or
+			   Input.UserInputType == Enum.UserInputType.Touch then
+				Dragging = false
+			end
+		end)
+		
+		UserInputService.InputChanged:Connect(function(Input)
+			if Input.UserInputType == Enum.UserInputType.MouseMovement or
+			   Input.UserInputType == Enum.UserInputType.Touch then
+				HandleInput(Input)
+			end
+		end)
+		
+		UpdateSlider(Value)
+		
+		local SliderObject = self:NewInstance(Container, Config)
+		SliderObject.SetValue = function(self, NewValue)
+			UpdateSlider(NewValue)
+			return self
+		end
+		SliderObject.GetValue = function(self)
+			return Value
+		end
+		
+		return SliderObject
+	end
+	
+	function ContainerClass:Input(Config)
+		Config = Config or {}
+		local Container = ImGui:CreateInstance("Frame", Frame, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 50)
+		})
+		
+		local Label = ImGui:CreateInstance("TextLabel", Container, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 20),
+			Text = Config.Text or "Input",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 14,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local InputBox = ImGui:CreateInstance("TextBox", Container, {
+			BackgroundColor3 = WindowConfig.Colors.MainColor,
+			BorderColor3 = WindowConfig.Colors.OutlineColor,
+			BorderSizePixel = 1,
+			Position = UDim2.fromOffset(0, 25),
+			Size = UDim2.new(1, 0, 0, 25),
+			Text = Config.Default or "",
+			PlaceholderText = Config.Placeholder or "Enter text...",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			PlaceholderColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 14,
+			Font = Enum.Font.Code,
+			ClearTextOnFocus = false
+		})
+		
+		ImGui:CreateInstance("UICorner", InputBox, {
+			CornerRadius = UDim.new(0, 4)
+		})
+		
+		ImGui:CreateInstance("UIPadding", InputBox, {
+			PaddingLeft = UDim.new(0, 5),
+			PaddingRight = UDim.new(0, 5)
+		})
+		
+		ImGui:ApplyAnimations(InputBox, "Inputs")
+		
+		if Config.Callback then
+			InputBox.FocusLost:Connect(function(EnterPressed)
+				Config.Callback(InputBox.Text, EnterPressed)
+			end)
+		end
+		
+		local InputObject = self:NewInstance(Container, Config)
+		InputObject.SetValue = function(self, NewValue)
+			InputBox.Text = NewValue
+			return self
+		end
+		InputObject.GetValue = function(self)
+			return InputBox.Text
+		end
+		
+		return InputObject
+	end
+	
+	function ContainerClass:Dropdown(Config)
+		Config = Config or {}
+		local Container = ImGui:CreateInstance("Frame", Frame, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 50),
+			ClipsDescendants = false
+		})
+		
+		local Label = ImGui:CreateInstance("TextLabel", Container, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 20),
+			Text = Config.Text or "Dropdown",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 14,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local DropdownButton = ImGui:CreateInstance("TextButton", Container, {
+			BackgroundColor3 = WindowConfig.Colors.MainColor,
+			BorderColor3 = WindowConfig.Colors.OutlineColor,
+			BorderSizePixel = 1,
+			Position = UDim2.fromOffset(0, 25),
+			Size = UDim2.new(1, 0, 0, 25),
+			Text = Config.Default or "Select...",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 14,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			AutoButtonColor = false
+		})
+		
+		ImGui:CreateInstance("UICorner", DropdownButton, {
+			CornerRadius = UDim.new(0, 4)
+		})
+		
+		ImGui:CreateInstance("UIPadding", DropdownButton, {
+			PaddingLeft = UDim.new(0, 5)
+		})
+		
+		local ArrowIcon = ImGui:CreateInstance("TextLabel", DropdownButton, {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(1, -20, 0.5, 0),
+			Size = UDim2.fromOffset(15, 15),
+			Text = "▼",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 12,
+			AnchorPoint = Vector2.new(0, 0.5)
+		})
+		
+		local DropdownList = ImGui:CreateInstance("ScrollingFrame", Container, {
+			BackgroundColor3 = WindowConfig.Colors.MainColor,
+			BorderColor3 = WindowConfig.Colors.OutlineColor,
+			BorderSizePixel = 1,
+			Position = UDim2.fromOffset(0, 52),
+			Size = UDim2.new(1, 0, 0, 0),
+			Visible = false,
+			ScrollBarThickness = 4,
+			CanvasSize = UDim2.fromOffset(0, 0),
+			ZIndex = 100
+		})
+		
+		ImGui:CreateInstance("UICorner", DropdownList, {
+			CornerRadius = UDim.new(0, 4)
+		})
+		
+		ImGui:CreateInstance("UIListLayout", DropdownList, {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 2)
+		})
+		
+		local IsOpen = false
+		local CurrentValue = Config.Default or ""
+		
+		local function ToggleDropdown()
+			IsOpen = not IsOpen
+			DropdownList.Visible = IsOpen
+			
+			if IsOpen then
+				local ContentSize = DropdownList.UIListLayout.AbsoluteContentSize.Y
+				local MaxHeight = math.min(ContentSize, 150)
+				ImGui:Tween(DropdownList, {
+					Size = UDim2.new(1, 0, 0, MaxHeight)
+				})
+				ImGui:Tween(ArrowIcon, {
+					Rotation = 180
+				})
+			else
+				ImGui:Tween(DropdownList, {
+					Size = UDim2.new(1, 0, 0, 0)
+				})
+				ImGui:Tween(ArrowIcon, {
+					Rotation = 0
+				})
+			end
+		end
+		
+		DropdownButton.Activated:Connect(ToggleDropdown)
+		
+		local function AddOption(OptionText)
+			local OptionButton = ImGui:CreateInstance("TextButton", DropdownList, {
+				BackgroundColor3 = WindowConfig.Colors.MainColor,
+				BackgroundTransparency = 0.5,
+				BorderSizePixel = 0,
+				Size = UDim2.new(1, 0, 0, 25),
+				Text = OptionText,
+				TextColor3 = WindowConfig.Colors.FontColor,
+				TextSize = 14,
+				Font = Enum.Font.Code,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				AutoButtonColor = false
+			})
+			
+			ImGui:CreateInstance("UIPadding", OptionButton, {
+				PaddingLeft = UDim.new(0, 5)
+			})
+			
+			ImGui:ApplyAnimations(OptionButton, "Buttons")
+			
+			OptionButton.Activated:Connect(function()
+				CurrentValue = OptionText
+				DropdownButton.Text = OptionText
+				ToggleDropdown()
+				
+				if Config.Callback then
+					Config.Callback(OptionText)
+				end
+			end)
+			
+			DropdownList.CanvasSize = UDim2.fromOffset(0, DropdownList.UIListLayout.AbsoluteContentSize.Y)
+		end
+		
+		for _, Option in ipairs(Config.Options or {}) do
+			AddOption(Option)
+		end
+		
+		local DropdownObject = self:NewInstance(Container, Config)
+		DropdownObject.AddOption = function(self, OptionText)
+			AddOption(OptionText)
+			return self
+		end
+		DropdownObject.SetValue = function(self, NewValue)
+			CurrentValue = NewValue
+			DropdownButton.Text = NewValue
+			return self
+		end
+		DropdownObject.GetValue = function(self)
+			return CurrentValue
+		end
+		
+		return DropdownObject
+	end
+	
+	function ContainerClass:GroupBox(Config)
+		Config = Config or {}
+		local GroupBox = ImGui:CreateInstance("Frame", Frame, {
+			BackgroundColor3 = WindowConfig.Colors.BackgroundColor,
+			BorderColor3 = WindowConfig.Colors.OutlineColor,
+			BorderSizePixel = 1,
+			Size = Config.Size or UDim2.new(1, 0, 0, 200),
+			ClipsDescendants = true
+		})
+		
+		ImGui:CreateInstance("UICorner", GroupBox, {
+			CornerRadius = UDim.new(0, 6)
+		})
+		
+		local Header = ImGui:CreateInstance("Frame", GroupBox, {
+			BackgroundColor3 = WindowConfig.Colors.HeaderColor,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 0, 25)
+		})
+		
+		ImGui:CreateInstance("UICorner", Header, {
+			CornerRadius = UDim.new(0, 6)
+		})
+		
+		local Title = ImGui:CreateInstance("TextLabel", Header, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -30, 1, 0),
+			Position = UDim2.fromOffset(10, 0),
+			Text = Config.Text or "Group",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 14,
+			Font = Enum.Font.GothamBold,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local CollapseButton = ImGui:CreateInstance("TextButton", Header, {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(1, -25, 0, 0),
+			Size = UDim2.fromOffset(25, 25),
+			Text = "−",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 18,
+			Font = Enum.Font.GothamBold
+		})
+		
+		local Content = ImGui:CreateInstance("ScrollingFrame", GroupBox, {
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(5, 30),
+			Size = UDim2.new(1, -10, 1, -35),
+			ScrollBarThickness = 4,
+			CanvasSize = UDim2.fromOffset(0, 0),
+			BorderSizePixel = 0
+		})
+		
+		ImGui:CreateInstance("UIListLayout", Content, {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 5)
+		})
+		
+		local IsCollapsed = false
+		local OriginalSize = GroupBox.Size
+		
+		local function ToggleCollapse()
+			IsCollapsed = not IsCollapsed
+			
+			if IsCollapsed then
+				ImGui:Tween(GroupBox, {
+					Size = UDim2.new(OriginalSize.X.Scale, OriginalSize.X.Offset, 0, 25)
+				})
+				CollapseButton.Text = "+"
+			else
+				ImGui:Tween(GroupBox, {
+					Size = OriginalSize
+				})
+				CollapseButton.Text = "−"
+			end
+			
+			Content.Visible = not IsCollapsed
+		end
+		
+		CollapseButton.Activated:Connect(ToggleCollapse)
+		
+		Content:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			Content.CanvasSize = UDim2.fromOffset(0, Content.UIListLayout.AbsoluteContentSize.Y)
+		end)
+		
+		local GroupBoxClass = ImGui:ContainerClass(Content, Config, Window)
+		GroupBoxClass.Frame = GroupBox
+		GroupBoxClass.Content = Content
+		GroupBoxClass.SetTitle = function(self, NewTitle)
+			Title.Text = NewTitle
+			return self
+		end
+		GroupBoxClass.Collapse = function(self)
+			if not IsCollapsed then
+				ToggleCollapse()
+			end
+			return self
+		end
+		GroupBoxClass.Expand = function(self)
+			if IsCollapsed then
+				ToggleCollapse()
+			end
+			return self
+		end
+		
+		return GroupBoxClass
+	end
+	
+	function ContainerClass:TabBox(Config)
+		Config = Config or {}
+		local TabBox = ImGui:CreateInstance("Frame", Frame, {
+			BackgroundColor3 = WindowConfig.Colors.BackgroundColor,
+			BorderColor3 = WindowConfig.Colors.OutlineColor,
+			BorderSizePixel = 1,
+			Size = Config.Size or UDim2.new(1, 0, 0, 300)
+		})
+		
+		ImGui:CreateInstance("UICorner", TabBox, {
+			CornerRadius = UDim.new(0, 6)
+		})
+		
+		local TabBar = ImGui:CreateInstance("Frame", TabBox, {
+			BackgroundColor3 = WindowConfig.Colors.HeaderColor,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 0, 30)
+		})
+		
+		ImGui:CreateInstance("UICorner", TabBar, {
+			CornerRadius = UDim.new(0, 6)
+		})
+		
+		ImGui:CreateInstance("UIListLayout", TabBar, {
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 2)
+		})
+		
+		local ContentArea = ImGui:CreateInstance("Frame", TabBox, {
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(5, 35),
+			Size = UDim2.new(1, -10, 1, -40)
+		})
+		
+		local Tabs = {}
+		local ActiveTab = nil
+		
+		local function CreateTab(TabConfig)
+			local TabButton = ImGui:CreateInstance("TextButton", TabBar, {
+				BackgroundColor3 = WindowConfig.Colors.MainColor,
+				BackgroundTransparency = 0.5,
+				BorderSizePixel = 0,
+				Size = UDim2.new(0, 100, 1, -4),
+				Position = UDim2.fromOffset(2, 2),
+				Text = TabConfig.Name or "Tab",
+				TextColor3 = WindowConfig.Colors.FontColor,
+				TextSize = 14,
+				Font = Enum.Font.Code,
+				AutoButtonColor = false
+			})
+			
+			ImGui:CreateInstance("UICorner", TabButton, {
+				CornerRadius = UDim.new(0, 4)
+			})
+			
+			local TabContent = ImGui:CreateInstance("ScrollingFrame", ContentArea, {
+				BackgroundTransparency = 1,
+				Size = UDim2.fromScale(1, 1),
+				ScrollBarThickness = 4,
+				CanvasSize = UDim2.fromOffset(0, 0),
+				Visible = false,
+				BorderSizePixel = 0
+			})
+			
+			ImGui:CreateInstance("UIListLayout", TabContent, {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, 5)
+			})
+			
+			TabContent:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+				TabContent.CanvasSize = UDim2.fromOffset(0, TabContent.UIListLayout.AbsoluteContentSize.Y)
+			end)
+			
+			local TabObject = ImGui:ContainerClass(TabContent, TabConfig, Window)
+			TabObject.Button = TabButton
+			TabObject.Content = TabContent
+			
+			ImGui:ApplyAnimations(TabButton, "Tabs")
+			
+			TabButton.Activated:Connect(function()
+				for _, Tab in pairs(Tabs) do
+					Tab.Content.Visible = false
+					ImGui:Tween(Tab.Button, {
+						BackgroundTransparency = 0.5
+					})
+				end
+				
+				TabContent.Visible = true
+				ImGui:Tween(TabButton, {
+					BackgroundTransparency = 0
+				})
+				
+				ActiveTab = TabObject
+			end)
+			
+			table.insert(Tabs, TabObject)
+			
+			if #Tabs == 1 then
+				TabButton:Activate()
+			end
+			
+			return TabObject
+		end
+		
+		local TabBoxClass = self:NewInstance(TabBox, Config)
+		TabBoxClass.CreateTab = CreateTab
+		TabBoxClass.GetActiveTab = function(self)
+			return ActiveTab
+		end
+		
+		if Config.Tabs then
+			for _, TabConfig in ipairs(Config.Tabs) do
+				CreateTab(TabConfig)
+			end
+		end
+		
+		return TabBoxClass
+	end
+	
+	function ContainerClass:ColorPicker(Config)
+		Config = Config or {}
+		local Container = ImGui:CreateInstance("Frame", Frame, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 30)
+		})
+		
+		local Label = ImGui:CreateInstance("TextLabel", Container, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -35, 1, 0),
+			Text = Config.Text or "Color",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 14,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local ColorDisplay = ImGui:CreateInstance("Frame", Container, {
+			BackgroundColor3 = Config.Default or Color3.new(1, 1, 1),
+			BorderColor3 = WindowConfig.Colors.OutlineColor,
+			BorderSizePixel = 1,
+			Position = UDim2.new(1, -25, 0.5, 0),
+			Size = UDim2.fromOffset(25, 25),
+			AnchorPoint = Vector2.new(0, 0.5)
+		})
+		
+		ImGui:CreateInstance("UICorner", ColorDisplay, {
+			CornerRadius = UDim.new(0, 4)
+		})
+		
+		local ColorButton = ImGui:CreateInstance("TextButton", ColorDisplay, {
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			Text = ""
+		})
+		
+		local CurrentColor = Config.Default or Color3.new(1, 1, 1)
+		
+		ColorButton.Activated:Connect(function()
+			if Config.Callback then
+				Config.Callback(CurrentColor)
+			end
+		end)
+		
+		local ColorObject = self:NewInstance(Container, Config)
+		ColorObject.SetValue = function(self, NewColor)
+			CurrentColor = NewColor
+			ColorDisplay.BackgroundColor3 = NewColor
+			return self
+		end
+		ColorObject.GetValue = function(self)
+			return CurrentColor
+		end
+		
+		return ColorObject
+	end
+	
+	function ContainerClass:Label(Config)
+		Config = Config or {}
+		local Label = ImGui:CreateInstance("TextLabel", Frame, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, Config.Height or 25),
+			Text = Config.Text or "Label",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = Config.TextSize or 14,
+			Font = Config.Font or Enum.Font.Code,
+			TextXAlignment = Config.Alignment or Enum.TextXAlignment.Left,
+			TextWrapped = Config.Wrapped or false
+		})
+		
+		local LabelObject = self:NewInstance(Label, Config)
+		LabelObject.SetText = function(self, NewText)
+			Label.Text = NewText
+			return self
+		end
+		
+		return LabelObject
+	end
+	
+	function ContainerClass:Separator(Config)
+		Config = Config or {}
+		local Separator = ImGui:CreateInstance("Frame", Frame, {
+			BackgroundColor3 = WindowConfig.Colors.OutlineColor,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 0, 1)
+		})
+		
+		return self:NewInstance(Separator, Config)
+	end
+	
+	function ContainerClass:Keybind(Config)
+		Config = Config or {}
+		local Container = ImGui:CreateInstance("Frame", Frame, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 30)
+		})
+		
+		local Label = ImGui:CreateInstance("TextLabel", Container, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -80, 1, 0),
+			Text = Config.Text or "Keybind",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 14,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local KeybindButton = ImGui:CreateInstance("TextButton", Container, {
+			BackgroundColor3 = WindowConfig.Colors.MainColor,
+			BorderColor3 = WindowConfig.Colors.OutlineColor,
+			BorderSizePixel = 1,
+			Position = UDim2.new(1, -75, 0.5, 0),
+			Size = UDim2.fromOffset(75, 25),
+			Text = Config.Default and Config.Default.Name or "None",
+			TextColor3 = WindowConfig.Colors.FontColor,
+			TextSize = 12,
+			Font = Enum.Font.Code,
+			AnchorPoint = Vector2.new(0, 0.5),
+			AutoButtonColor = false
+		})
+		
+		ImGui:CreateInstance("UICorner", KeybindButton, {
+			CornerRadius = UDim.new(0, 4)
+		})
+		
+		local CurrentKey = Config.Default
+		local Listening = false
+		
+		local function UpdateKeybind(Key)
+			CurrentKey = Key
+			KeybindButton.Text = Key and Key.Name or "None"
+			
+			if Config.Callback then
+				Config.Callback(Key)
+			end
+		end
+		
+		KeybindButton.Activated:Connect(function()
+			if Listening then return end
+			
+			Listening = true
+			KeybindButton.Text = "..."
+			
+			local Connection
+			Connection = UserInputService.InputBegan:Connect(function(Input, GameProcessed)
+				if GameProcessed then return end
+				
+				if Input.UserInputType == Enum.UserInputType.Keyboard then
+					UpdateKeybind(Input.KeyCode)
+					Listening = false
+					Connection:Disconnect()
+				end
+			end)
+		end)
+		
+		local KeybindObject = self:NewInstance(Container, Config)
+		KeybindObject.SetValue = function(self, NewKey)
+			UpdateKeybind(NewKey)
+			return self
+		end
+		KeybindObject.GetValue = function(self)
+			return CurrentKey
+		end
+		
+		return KeybindObject
+	end
+	
+	return ContainerClass
+end
+
+function ImGui:CreateWindow(WindowConfig)
+	WindowConfig = WindowConfig or {}
+	
+	local Window = self:CreateInstance("Frame", self.ScreenGui, {
+		BackgroundColor3 = WindowConfig.BackgroundColor or self:GetTheme().BackgroundColor,
+		BorderColor3 = WindowConfig.BorderColor or self:GetTheme().OutlineColor,
+		BorderSizePixel = 1,
+		Position = WindowConfig.Position or UDim2.fromScale(0.5, 0.5),
+		Size = WindowConfig.Size or UDim2.fromOffset(500, 400),
+		AnchorPoint = WindowConfig.AnchorPoint or Vector2.new(0.5, 0.5),
+		ClipsDescendants = true
+	})
+	
+	self:CreateInstance("UICorner", Window, {
+		CornerRadius = UDim.new(0, 8)
+	})
+	
+	WindowConfig.Window = Window
+	WindowConfig.Colors = WindowConfig.Colors or self:GetTheme()
+	
+	local TitleBar = self:CreateInstance("Frame", Window, {
+		BackgroundColor3 = WindowConfig.Colors.HeaderColor,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 30)
+	})
+	
+	self:CreateInstance("UICorner", TitleBar, {
+		CornerRadius = UDim.new(0, 8)
+	})
+	
+	local Title = self:CreateInstance("TextLabel", TitleBar, {
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(10, 0),
+		Size = UDim2.new(1, -80, 1, 0),
+		Text = WindowConfig.Title or "ImGui Window",
+		TextColor3 = WindowConfig.Colors.FontColor,
+		TextSize = 14,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left
+	})
+	
+	local CloseButton = self:CreateInstance("TextButton", TitleBar, {
+		BackgroundColor3 = WindowConfig.Colors.ErrorColor,
+		BorderSizePixel = 0,
+		Position = UDim2.new(1, -25, 0.5, 0),
+		Size = UDim2.fromOffset(20, 20),
+		Text = "×",
+		TextColor3 = Color3.new(1, 1, 1),
+		TextSize = 18,
+		Font = Enum.Font.GothamBold,
+		AnchorPoint = Vector2.new(0, 0.5),
+		AutoButtonColor = false
+	})
+	
+	self:CreateInstance("UICorner", CloseButton, {
+		CornerRadius = UDim.new(1, 0)
+	})
+	
+	local MinimizeButton = self:CreateInstance("TextButton", TitleBar, {
+		BackgroundColor3 = WindowConfig.Colors.WarningColor,
+		BorderSizePixel = 0,
+		Position = UDim2.new(1, -50, 0.5, 0),
+		Size = UDim2.fromOffset(20, 20),
+		Text = "−",
+		TextColor3 = Color3.new(1, 1, 1),
+		TextSize = 18,
+		Font = Enum.Font.GothamBold,
+		AnchorPoint = Vector2.new(0, 0.5),
+		AutoButtonColor = false
+	})
+	
+	self:CreateInstance("UICorner", MinimizeButton, {
+		CornerRadius = UDim.new(1, 0)
+	})
+	
+	local Content = self:CreateInstance("ScrollingFrame", Window, {
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(10, 40),
+		Size = UDim2.new(1, -20, 1, -50),
+		ScrollBarThickness = 4,
+		CanvasSize = UDim2.fromOffset(0, 0),
+		BorderSizePixel = 0
+	})
+	
+	self:CreateInstance("UIListLayout", Content, {
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 5)
+	})
+	
+	Content:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		Content.CanvasSize = UDim2.fromOffset(0, Content.UIListLayout.AbsoluteContentSize.Y)
+	end)
+	
+	local ResizeHandle = self:CreateInstance("TextLabel", Window, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(1, -15, 1, -15),
+		Size = UDim2.fromOffset(15, 15),
+		Text = "⋰",
+		TextColor3 = WindowConfig.Colors.FontColor,
+		TextSize = 14,
+		Font = Enum.Font.Code
+	})
+	
+	if not WindowConfig.NoDrag then
+		self:ApplyDraggable(Window, TitleBar)
+	end
+	
+	if not WindowConfig.NoResize then
+		self:ApplyResizable(
+			WindowConfig.MinSize or Vector2.new(300, 200),
+			Window,
+			ResizeHandle,
+			WindowConfig
+		)
+	end
+	
+	local IsMinimized = false
+	local OriginalSize = Window.Size
+	
+	MinimizeButton.Activated:Connect(function()
+		IsMinimized = not IsMinimized
+		
+		if IsMinimized then
+			OriginalSize = Window.Size
+			self:Tween(Window, {
+				Size = UDim2.new(Window.Size.X.Scale, Window.Size.X.Offset, 0, 30)
+			})
+			MinimizeButton.Text = "+"
+		else
+			self:Tween(Window, {
+				Size = OriginalSize
+			})
+			MinimizeButton.Text = "−"
+		end
+	end)
+	
+	CloseButton.Activated:Connect(function()
+		Window.Visible = false
+		if WindowConfig.OnClose then
+			WindowConfig.OnClose()
+		end
+	end)
+	
+	function WindowConfig:Show()
+		Window.Visible = true
+		return self
+	end
+	
+	function WindowConfig:Hide()
+		Window.Visible = false
+		return self
+	end
+	
+	function WindowConfig:SetTitle(NewTitle)
+		Title.Text = NewTitle
+		return self
+	end
+	
+	function WindowConfig:SetPosition(NewPosition)
+		Window.Position = NewPosition
+		return self
+	end
+	
+	function WindowConfig:SetSize(NewSize)
+		Window.Size = NewSize
+		return self
+	end
+	
+	function WindowConfig:Center()
+		Window.Position = UDim2.fromScale(0.5, 0.5)
+		Window.AnchorPoint = Vector2.new(0.5, 0.5)
+		return self
+	end
+	
+	function WindowConfig:Destroy()
+		Window:Destroy()
+		self.Windows[Window] = nil
+		return self
+	end
+	
+	self.Windows[Window] = WindowConfig
+	
+	local ContainerMethods = self:ContainerClass(Content, WindowConfig, Window)
+	for k, v in pairs(ContainerMethods) do
+		WindowConfig[k] = v
+	end
+	
+	return self:MergeMetatables(WindowConfig, Window)
+end
+
+function ImGui:CreateNotification(Config)
+	Config = Config or {}
+	
+	local Notification = self:CreateInstance("Frame", self.ScreenGui, {
+		BackgroundColor3 = Config.BackgroundColor or self:GetTheme().MainColor,
+		BorderColor3 = self:GetTheme().OutlineColor,
+		BorderSizePixel = 1,
+		Position = UDim2.new(1, 10, 1, -10),
+		Size = UDim2.new(0, 300, 0, 80),
+		AnchorPoint = Vector2.new(0, 1),
+		ZIndex = 1000
+	})
+	
+	self:CreateInstance("UICorner", Notification, {
+		CornerRadius = UDim.new(0, 6)
+	})
+	
+	local Icon = self:CreateInstance("TextLabel", Notification, {
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(10, 10),
+		Size = UDim2.fromOffset(30, 30),
+		Text = Config.Icon or "ℹ",
+		TextColor3 = Config.IconColor or self:GetTheme().AccentColor,
+		TextSize = 24,
+		Font = Enum.Font.GothamBold
+	})
+	
+	local Title = self:CreateInstance("TextLabel", Notification, {
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(45, 10),
+		Size = UDim2.new(1, -55, 0, 20),
+		Text = Config.Title or "Notification",
+		TextColor3 = self:GetTheme().FontColor,
+		TextSize = 14,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left
+	})
+	
+	local Message = self:CreateInstance("TextLabel", Notification, {
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(45, 32),
+		Size = UDim2.new(1, -55, 0, 38),
+		Text = Config.Message or "This is a notification",
+		TextColor3 = self:GetTheme().FontColor,
+		TextSize = 12,
+		Font = Enum.Font.Code,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		TextWrapped = true
+	})
+	
+	self:Tween(Notification, {
+		Position = UDim2.new(1, -310, 1, -10)
+	})
+	
+	local Duration = Config.Duration or 3
+	
+	task.delay(Duration, function()
+		self:Tween(Notification, {
+			Position = UDim2.new(1, 10, 1, -10)
+		})
+		task.wait(0.2)
+		Notification:Destroy()
+	end)
+	
+	return Notification
+end
+
+function ImGui:Notify(Message, Type, Duration)
+	local NotificationConfig = {
+		Message = Message,
+		Duration = Duration or 3
+	}
+	
+	if Type == "success" then
+		NotificationConfig.Title = "Success"
+		NotificationConfig.Icon = "✓"
+		NotificationConfig.IconColor = self:GetTheme().SuccessColor
+		NotificationConfig.BackgroundColor = self:GetTheme().MainColor
+	elseif Type == "error" then
+		NotificationConfig.Title = "Error"
+		NotificationConfig.Icon = "✕"
+		NotificationConfig.IconColor = self:GetTheme().ErrorColor
+		NotificationConfig.BackgroundColor = self:GetTheme().MainColor
+	elseif Type == "warning" then
+		NotificationConfig.Title = "Warning"
+		NotificationConfig.Icon = "⚠"
+		NotificationConfig.IconColor = self:GetTheme().WarningColor
+		NotificationConfig.BackgroundColor = self:GetTheme().MainColor
+	else
+		NotificationConfig.Title = "Info"
+		NotificationConfig.Icon = "ℹ"
+		NotificationConfig.IconColor = self:GetTheme().AccentColor
+	end
+	
+	return self:CreateNotification(NotificationConfig)
+end
+
+function ImGui:Init()
+	self:InitializeThemes()
+	
+	local GuiParent = IsStudio and PlayerGui or CoreGui
+	self.ScreenGui = self:CreateInstance("ScreenGui", GuiParent, {
+		DisplayOrder = 9999,
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	})
+	
+	if self.IsMobile then
+		self:Warn("Mobile device detected. Touch controls enabled.")
+	end
+	
+	return self
+end
+
+return ImGui:Init()
