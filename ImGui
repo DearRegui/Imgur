@@ -1,0 +1,1663 @@
+--《》Son in law《》--
+
+local ImGui = {
+	Animations = {
+		Buttons = {
+			MouseEnter = { BackgroundTransparency = 0.5 },
+			MouseLeave = { BackgroundTransparency = 0.7 }
+		},
+		Tabs = {
+			MouseEnter = { BackgroundTransparency = 0.5 },
+			MouseLeave = { BackgroundTransparency = 1 }
+		},
+		Inputs = {
+			MouseEnter = { BackgroundTransparency = 0 },
+			MouseLeave = { BackgroundTransparency = 0.5 }
+		},
+		WindowBorder = {
+			Selected = { Transparency = 0, Thickness = 1 },
+			Deselected = { Transparency = 0.7, Thickness = 1 }
+		}
+	},
+
+	Windows = {},
+	Animation = TweenInfo.new(0.1),
+	UIAssetId = "rbxassetid://76246418997296",
+	
+	-- Enhanced Collections
+	Labels = {},
+	Buttons = {},
+	Toggles = {},
+	Options = {},
+	Tooltips = {},
+	DependencyBoxes = {},
+	Notifications = {},
+	
+	-- Settings
+	CornerRadius = 4,
+	MinSize = Vector2.new(480, 360),
+	NotifyTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+}
+
+--// Universal functions
+local NullFunction = function() end
+local CloneRef = cloneref or function(_) return _ end
+local function GetService(...): ServiceProvider
+	return CloneRef(game:GetService(...))
+end
+
+function ImGui:Warn(...)
+	if self.NoWarnings then return end
+	return warn("[IMGUI]", ...)
+end
+
+--// Services 
+local TweenService = GetService("TweenService")
+local UserInputService = GetService("UserInputService")
+local Players = GetService("Players")
+local CoreGui = GetService("CoreGui")
+local RunService = GetService("RunService")
+local TextService = GetService("TextService")
+
+--// LocalPlayer
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer.PlayerGui
+local Mouse = LocalPlayer:GetMouse()
+
+--// ImGui Config
+local IsStudio = RunService:IsStudio()
+ImGui.NoWarnings = not IsStudio
+
+--// Prefabs (Continued from original implementation)
+function ImGui:FetchUI()
+	local CacheName = "DepsoImGui"
+	if _G[CacheName] then
+		self:Warn("Prefabs loaded from Cache")
+		return _G[CacheName]
+	end
+
+	local UI = nil
+	if not IsStudio then
+		UI = game:GetObjects(ImGui.UIAssetId)[1]
+	else
+		UI = PlayerGui:FindFirstChild("DepsoImGui") or script.DepsoImGui
+	end
+
+	_G[CacheName] = UI
+	return UI
+end
+
+local UI = ImGui:FetchUI()
+local Prefabs = UI.Prefabs
+ImGui.Prefabs = Prefabs
+Prefabs.Visible = false
+
+--// Additional Styles System
+local AdditionalStyles = {
+	[{Name="Border"}] = function(GuiObject, Value, Class)
+		local Outline = GuiObject:FindFirstChildOfClass("UIStroke")
+		if not Outline then return end
+		if Class.BorderThickness then
+			Outline.Thickness = Class.BorderThickness
+		end
+		Outline.Enabled = Value
+	end,
+
+	[{Name="Ratio"}] = function(GuiObject, Value, Class)
+		local RatioAxis = Class.RatioAxis or "Height"
+		local AspectRatio = Class.Ratio or 4/3
+		local AspectType = Class.AspectType or Enum.AspectType.ScaleWithParentSize
+
+		local Ratio = GuiObject:FindFirstChildOfClass("UIAspectRatioConstraint")
+		if not Ratio then
+			Ratio = ImGui:CreateInstance("UIAspectRatioConstraint", GuiObject)
+		end
+
+		Ratio.DominantAxis = Enum.DominantAxis[RatioAxis]
+		Ratio.AspectType = AspectType
+		Ratio.AspectRatio = AspectRatio
+	end,
+
+	[{Name="CornerRadius", Recursive=true}] = function(GuiObject, Value, Class)
+		local UICorner = GuiObject:FindFirstChildOfClass("UICorner")
+		if not UICorner then
+			UICorner = ImGui:CreateInstance("UICorner", GuiObject)
+		end
+		UICorner.CornerRadius = Class.CornerRadius
+	end,
+
+	[{Name="Label"}] = function(GuiObject, Value, Class)
+		local Label = GuiObject:FindFirstChild("Label")
+		if not Label then return end
+		Label.Text = Class.Label
+		function Class:SetLabel(Text)
+			Label.Text = Text
+			return Class
+		end
+	end,
+
+	[{Name="NoGradient", Aliases = {"NoGradientAll"}, Recursive=true}] = function(GuiObject, Value, Class)
+		local UIGradient = GuiObject:FindFirstChildOfClass("UIGradient")
+		if not UIGradient then return end
+		UIGradient.Enabled = not Value
+	end,
+
+	[{Name="Callback"}] = function(GuiObject, Value, Class)
+		function Class:SetCallback(NewCallback)
+			Class.Callback = NewCallback
+			return Class
+		end
+		function Class:FireCallback()
+			return Class.Callback(GuiObject)
+		end
+	end,
+
+	[{Name="Value"}] = function(GuiObject, Value, Class)
+		function Class:GetValue()
+			return Class.Value
+		end
+		function Class:SetValue(NewValue)
+			Class.Value = NewValue
+			return Class
+		end
+	end,
+	
+	[{Name="Tooltip"}] = function(GuiObject, Value, Class)
+		if not Value or Value == "" then return end
+		ImGui:AddTooltip(GuiObject, Value, Class)
+	end,
+}
+
+--// Helper Functions
+function ImGui:GetName(Name: string)
+	return string.format("%s_", Name)
+end
+
+function ImGui:CreateInstance(Class, Parent, Properties)
+	local Instance = Instance.new(Class, Parent)
+	for Key, Value in pairs(Properties or {}) do
+		Instance[Key] = Value
+	end
+	return Instance
+end
+
+function ImGui:ApplyColors(ColorOverwrites, GuiObject, ElementType)
+	for Info, Value in pairs(ColorOverwrites) do
+		local Key = Info
+		local Recursive = false
+
+		if typeof(Info) == "table" then
+			Key = Info.Name or ""
+			Recursive = Info.Recursive or false
+		end
+
+		if typeof(Value) == "table" then
+			local Element = GuiObject:FindFirstChild(Key, Recursive)
+			if not Element and ElementType == "Window" then
+				Element = GuiObject.Content:FindFirstChild(Key, Recursive)
+			end
+			if Element then
+				ImGui:ApplyColors(Value, Element)
+			end
+			continue
+		end
+
+		GuiObject[Key] = Value
+	end
+end
+
+function ImGui:CheckStyles(GuiObject, Class, Colors)
+	for Info, Callback in pairs(AdditionalStyles) do
+		local Value = Class[Info.Name]
+		if not Value and Info.Aliases then
+			for _, Alias in ipairs(Info.Aliases) do
+				Value = Class[Alias]
+				if Value then break end
+			end
+		end
+		if Value == nil then continue end
+
+		Callback(GuiObject, Value, Class)
+		if Info.Recursive then
+			for _, Child in ipairs(GuiObject:GetChildren()) do
+				Callback(Child, Value, Class)
+			end
+		end
+	end
+
+	local ElementType = GuiObject.Name
+	GuiObject.Name = self:GetName(ElementType)
+
+	Colors = Colors or {}
+	local ColorOverwrites = Colors[ElementType]
+	if ColorOverwrites then
+		ImGui:ApplyColors(ColorOverwrites, GuiObject, ElementType)
+	end
+
+	for Key, Value in pairs(Class) do
+		pcall(function()
+			GuiObject[Key] = Value
+		end)
+	end
+end
+
+function ImGui:MergeMetatables(Class, Instance)
+	local Metadata = {}
+	Metadata.__index = function(self, Key)
+		local suc, Value = pcall(function()
+			local Val = Instance[Key]
+			if typeof(Val) == "function" then
+				return function(...)
+					return Val(Instance, ...)
+				end
+			end
+			return Val
+		end)
+		return suc and Value or Class[Key]
+	end
+
+	Metadata.__newindex = function(self, Key, Value)
+		if Class[Key] ~= nil or typeof(Value) == "function" then
+			Class[Key] = Value
+		else
+			Instance[Key] = Value
+		end
+	end
+
+	return setmetatable({}, Metadata)
+end
+
+--// ENHANCED SYSTEMS
+
+--// Tooltip System
+function ImGui:AddTooltip(GuiObject, Text, Class)
+	local TooltipFrame = self:CreateInstance("Frame", self.ScreenGui, {
+		Name = "Tooltip",
+		BackgroundColor3 = Color3.fromRGB(25, 25, 25),
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(0, 0),
+		Position = UDim2.fromOffset(0, 0),
+		Visible = false,
+		ZIndex = 10000,
+		AutomaticSize = Enum.AutomaticSize.XY
+	})
+	
+	local Corner = self:CreateInstance("UICorner", TooltipFrame, {
+		CornerRadius = UDim.new(0, 4)
+	})
+	
+	local Stroke = self:CreateInstance("UIStroke", TooltipFrame, {
+		Color = Color3.fromRGB(40, 40, 40),
+		Thickness = 1
+	})
+	
+	local Padding = self:CreateInstance("UIPadding", TooltipFrame, {
+		PaddingLeft = UDim.new(0, 8),
+		PaddingRight = UDim.new(0, 8),
+		PaddingTop = UDim.new(0, 4),
+		PaddingBottom = UDim.new(0, 4)
+	})
+	
+	local Label = self:CreateInstance("TextLabel", TooltipFrame, {
+		BackgroundTransparency = 1,
+		Text = Text,
+		TextColor3 = Color3.new(1, 1, 1),
+		TextSize = 14,
+		Font = Enum.Font.Code,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY
+	})
+	
+	GuiObject.MouseEnter:Connect(function()
+		TooltipFrame.Visible = true
+	end)
+	
+	GuiObject.MouseLeave:Connect(function()
+		TooltipFrame.Visible = false
+	end)
+	
+	RunService.RenderStepped:Connect(function()
+		if TooltipFrame.Visible then
+			local MousePos = UserInputService:GetMouseLocation()
+			TooltipFrame.Position = UDim2.fromOffset(MousePos.X + 10, MousePos.Y + 10)
+		end
+	end)
+	
+	table.insert(self.Tooltips, {Frame = TooltipFrame, Object = GuiObject})
+end
+
+--// Dependency System
+function ImGui:CreateDependencyBox(Parent, Options)
+	local DependencyBox = {
+		Dependencies = {},
+		Parent = Parent,
+		Enabled = true
+	}
+	
+	function DependencyBox:AddDependency(Toggle)
+		table.insert(self.Dependencies, Toggle)
+		self:Update()
+	end
+	
+	function DependencyBox:Update()
+		local AllEnabled = true
+		for _, Toggle in ipairs(self.Dependencies) do
+			if not Toggle:GetValue() then
+				AllEnabled = false
+				break
+			end
+		end
+		
+		self.Enabled = AllEnabled
+		
+		if self.Parent then
+			ImGui:Tween(self.Parent, {
+				BackgroundTransparency = AllEnabled and 0 or 0.7
+			})
+			
+			for _, Child in ipairs(self.Parent:GetDescendants()) do
+				if Child:IsA("GuiButton") or Child:IsA("TextBox") then
+					Child.Active = AllEnabled
+				end
+			end
+		end
+	end
+	
+	table.insert(self.DependencyBoxes, DependencyBox)
+	return DependencyBox
+end
+
+--// Container Class (Element Creation)
+function ImGui:ContainerClass(Frame, Class, Window)
+	local ContainerClass = Class or {}
+	local WindowConfig = self.Windows[Window]
+
+	function ContainerClass:NewInstance(Instance, Class, Parent)
+		Class = Class or {}
+		Instance.Parent = Parent or Frame
+		Instance.Visible = true
+
+		if WindowConfig.NoGradientAll then
+			Class.NoGradient = true
+		end
+
+		local Colors = WindowConfig.Colors
+		ImGui:CheckStyles(Instance, Class, Colors)
+
+		if Class.NewInstanceCallback then
+			Class.NewInstanceCallback(Instance)
+		end
+
+		return ImGui:MergeMetatables(Class, Instance)
+	end
+	
+	--// GROUPBOX
+	function ContainerClass:AddGroupbox(Config)
+		Config = Config or {}
+		local Name = Config.Name or "Groupbox"
+		
+		local Groupbox = ImGui:CreateInstance("Frame", Frame, {
+			Name = "Groupbox",
+			BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, -10, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = Config.LayoutOrder or 0
+		})
+		
+		ImGui:CreateInstance("UICorner", Groupbox, {CornerRadius = UDim.new(0, ImGui.CornerRadius)})
+		ImGui:CreateInstance("UIStroke", Groupbox, {Color = Color3.fromRGB(40, 40, 40), Thickness = 1})
+		ImGui:CreateInstance("UIPadding", Groupbox, {
+			PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8),
+			PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8)
+		})
+		ImGui:CreateInstance("UIListLayout", Groupbox, {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder})
+		
+		local Title = ImGui:CreateInstance("TextLabel", Groupbox, {
+			Name = "GroupboxTitle", BackgroundTransparency = 1, Text = Name,
+			TextColor3 = Color3.new(1, 1, 1), TextSize = 14, Font = Enum.Font.GothamBold,
+			TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 0
+		})
+		
+		local GroupboxClass = ImGui:ContainerClass(Groupbox, Config, Window)
+		
+		function GroupboxClass:SetTitle(NewTitle)
+			Title.Text = NewTitle
+			return self
+		end
+		
+		if Config.Tooltip then
+			ImGui:AddTooltip(Groupbox, Config.Tooltip, Config)
+		end
+		
+		return GroupboxClass
+	end
+	
+	--// DEPENDENCY GROUPBOX
+	function ContainerClass:AddDependencyGroupbox(Config)
+		local Groupbox = self:AddGroupbox(Config)
+		local DependencyBox = ImGui:CreateDependencyBox(Groupbox, Config)
+		Groupbox.DependencyBox = DependencyBox
+		return Groupbox
+	end
+
+	--// BUTTON
+	function ContainerClass:AddButton(Config)
+		Config = Config or {}
+		local Name = Config.Name or "Button"
+		local Callback = Config.Callback or NullFunction
+
+		local Button = Prefabs.Button:Clone()
+		Button.Text = Name
+		Button.LayoutOrder = Config.LayoutOrder or 0
+
+		Button.Activated:Connect(function()
+			Callback()
+			if Config.Confirm then
+				Button.Text = "Confirmed!"
+				task.wait(1)
+				Button.Text = Name
+			end
+		end)
+
+		local ButtonClass = self:NewInstance(Button, Config)
+		ImGui:ApplyAnimations(Button, "Buttons")
+
+		table.insert(ImGui.Buttons, ButtonClass)
+		return ButtonClass
+	end
+	
+	--// SUB BUTTON (Smaller variant)
+	function ContainerClass:AddSubButton(Config)
+		Config = Config or {}
+		Config.Size = Config.Size or UDim2.new(0.48, 0, 0, 32)
+		local Button = self:AddButton(Config)
+		Button.TextSize = 12
+		Button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+		return Button
+	end
+
+	--// TOGGLE
+	function ContainerClass:AddToggle(Config)
+		Config = Config or {}
+		local Name = Config.Name or "Toggle"
+		local Default = Config.Default or false
+		local Callback = Config.Callback or NullFunction
+
+		local Toggle = Prefabs.Toggle:Clone()
+		local Label = Toggle:FindFirstChild("Label", true)
+		local Tick = Toggle:FindFirstChild("Tick", true)
+		local Button = Toggle:FindFirstChild("ToggleButton", true)
+
+		Label.Text = Name
+		Config.Value = Default
+		Toggle.LayoutOrder = Config.LayoutOrder or 0
+
+		local function SetState(State)
+			Config.Value = State
+			Tick.Visible = State
+			ImGui:Tween(Button, {
+				BackgroundColor3 = State and Color3.fromRGB(125, 85, 255) or Color3.fromRGB(40, 40, 40)
+			})
+			Callback(State)
+		end
+
+		Button.Activated:Connect(function()
+			SetState(not Config.Value)
+		end)
+
+		SetState(Default)
+
+		local ToggleClass = self:NewInstance(Toggle, Config)
+		ImGui:ApplyAnimations(Button, "Buttons")
+
+		function ToggleClass:SetValue(Value)
+			SetState(Value)
+			return self
+		end
+
+		table.insert(ImGui.Toggles, ToggleClass)
+		return ToggleClass
+	end
+
+	--// SLIDER
+	function ContainerClass:AddSlider(Config)
+		Config = Config or {}
+		local Name = Config.Name or "Slider"
+		local Min = Config.Min or 0
+		local Max = Config.Max or 100
+		local Default = Config.Default or Min
+		local Increment = Config.Increment or 1
+		local Suffix = Config.Suffix or ""
+		local Callback = Config.Callback or NullFunction
+
+		local Slider = Prefabs.Slider:Clone()
+		local Label = Slider:FindFirstChild("Label", true)
+		local ValueLabel = Slider:FindFirstChild("Value", true)
+		local SliderButton = Slider:FindFirstChild("SliderButton", true)
+		local Fill = Slider:FindFirstChild("Fill", true)
+
+		Label.Text = Name
+		Config.Value = Default
+		Slider.LayoutOrder = Config.LayoutOrder or 0
+
+		local function SetValue(Value)
+			Value = math.clamp(Value, Min, Max)
+			Value = math.round(Value / Increment) * Increment
+			Config.Value = Value
+
+			local Alpha = (Value - Min) / (Max - Min)
+			Fill.Size = UDim2.fromScale(Alpha, 1)
+			ValueLabel.Text = tostring(Value) .. Suffix
+
+			Callback(Value)
+		end
+
+		local Dragging = false
+		SliderButton.InputBegan:Connect(function(Input)
+			if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+				Dragging = true
+			end
+		end)
+
+		UserInputService.InputEnded:Connect(function(Input)
+			if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+				Dragging = false
+			end
+		end)
+
+		UserInputService.InputChanged:Connect(function(Input)
+			if Dragging and Input.UserInputType == Enum.UserInputType.MouseMovement then
+				local RelativeX = math.clamp((Mouse.X - SliderButton.AbsolutePosition.X) / SliderButton.AbsoluteSize.X, 0, 1)
+				local Value = Min + (Max - Min) * RelativeX
+				SetValue(Value)
+			end
+		end)
+
+		SetValue(Default)
+
+		local SliderClass = self:NewInstance(Slider, Config)
+		ImGui:ApplyAnimations(SliderButton, "Buttons")
+
+		function SliderClass:SetValue(Value)
+			SetValue(Value)
+			return self
+		end
+		
+		function SliderClass:SetMin(NewMin)
+			Min = NewMin
+			SetValue(Config.Value)
+			return self
+		end
+		
+		function SliderClass:SetMax(NewMax)
+			Max = NewMax
+			SetValue(Config.Value)
+			return self
+		end
+
+		return SliderClass
+	end
+
+	--// INPUT BOX
+	function ContainerClass:AddInput(Config)
+		Config = Config or {}
+		local Name = Config.Name or "Input"
+		local Default = Config.Default or ""
+		local Placeholder = Config.Placeholder or "Enter text..."
+		local Numeric = Config.Numeric or false
+		local Finished = Config.Finished or false
+		local Callback = Config.Callback or NullFunction
+
+		local Input = Prefabs.Input:Clone()
+		local Label = Input:FindFirstChild("Label", true)
+		local TextBox = Input:FindFirstChild("InputBox", true)
+
+		Label.Text = Name
+		TextBox.PlaceholderText = Placeholder
+		TextBox.Text = Default
+		Config.Value = Default
+		Input.LayoutOrder = Config.LayoutOrder or 0
+
+		local function SetValue(Value)
+			if Numeric then
+				Value = tonumber(Value) or 0
+			end
+			Config.Value = Value
+			TextBox.Text = tostring(Value)
+			Callback(Value)
+		end
+
+		if Finished then
+			TextBox.FocusLost:Connect(function(EnterPressed)
+				if EnterPressed then
+					SetValue(TextBox.Text)
+				end
+			end)
+		else
+			TextBox:GetPropertyChangedSignal("Text"):Connect(function()
+				SetValue(TextBox.Text)
+			end)
+		end
+
+		local InputClass = self:NewInstance(Input, Config)
+		ImGui:ApplyAnimations(TextBox, "Inputs")
+
+		function InputClass:SetValue(Value)
+			SetValue(Value)
+			return self
+		end
+
+		return InputClass
+	end
+
+	--// DROPDOWN
+	function ContainerClass:AddDropdown(Config)
+		Config = Config or {}
+		local Name = Config.Name or "Dropdown"
+		local Values = Config.Values or {}
+		local Default = Config.Default or (Values[1] or "None")
+		local Multi = Config.Multi or false
+		local Callback = Config.Callback or NullFunction
+
+		local Dropdown = Prefabs.Dropdown:Clone()
+		local Label = Dropdown:FindFirstChild("Label", true)
+		local DisplayButton = Dropdown:FindFirstChild("DisplayButton", true)
+		local DisplayLabel = DisplayButton:FindFirstChild("DisplayLabel", true)
+		local DropdownList = Dropdown:FindFirstChild("DropdownList", true)
+
+		Label.Text = Name
+		Config.Value = Multi and {} or Default
+		Dropdown.LayoutOrder = Config.LayoutOrder or 0
+		DropdownList.Visible = false
+
+		local function UpdateDisplay()
+			if Multi then
+				local Selected = {}
+				for Value, State in pairs(Config.Value) do
+					if State then table.insert(Selected, Value) end
+				end
+				DisplayLabel.Text = #Selected > 0 and table.concat(Selected, ", ") or "None"
+			else
+				DisplayLabel.Text = Config.Value
+			end
+		end
+
+		local function CreateOption(Value)
+			local Option = ImGui:CreateInstance("TextButton", DropdownList, {
+				Name = "Option", BackgroundColor3 = Color3.fromRGB(30, 30, 30), BorderSizePixel = 0,
+				Text = Value, TextColor3 = Color3.new(1, 1, 1), TextSize = 14, Font = Enum.Font.Code,
+				Size = UDim2.new(1, 0, 0, 30), AutoButtonColor = false
+			})
+
+			ImGui:CreateInstance("UICorner", Option, {CornerRadius = UDim.new(0, 4)})
+
+			Option.Activated:Connect(function()
+				if Multi then
+					Config.Value[Value] = not Config.Value[Value]
+				else
+					Config.Value = Value
+					DropdownList.Visible = false
+				end
+				UpdateDisplay()
+				Callback(Config.Value)
+			end)
+
+			ImGui:ApplyAnimations(Option, "Buttons")
+		end
+
+		for _, Value in ipairs(Values) do
+			CreateOption(Value)
+			if Multi then Config.Value[Value] = false end
+		end
+
+		DisplayButton.Activated:Connect(function()
+			DropdownList.Visible = not DropdownList.Visible
+		end)
+
+		UpdateDisplay()
+
+		local DropdownClass = self:NewInstance(Dropdown, Config)
+		ImGui:ApplyAnimations(DisplayButton, "Buttons")
+
+		function DropdownClass:SetValue(Value)
+			Config.Value = Value
+			UpdateDisplay()
+			Callback(Value)
+			return self
+		end
+
+		function DropdownClass:SetValues(NewValues)
+			Values = NewValues
+			for _, Child in ipairs(DropdownList:GetChildren()) do
+				if Child:IsA("TextButton") then Child:Destroy() end
+			end
+			for _, Value in ipairs(Values) do
+				CreateOption(Value)
+			end
+			return self
+		end
+
+		return DropdownClass
+	end
+	
+	--// COLOR PICKER
+	function ContainerClass:AddColorPicker(Config)
+		Config = Config or {}
+		local Name = Config.Name or "Color Picker"
+		local Default = Config.Default or Color3.new(1, 1, 1)
+		local Callback = Config.Callback or NullFunction
+
+		local ColorPicker = Prefabs.ColorPicker:Clone()
+		local Label = ColorPicker:FindFirstChild("Label", true)
+		local ColorDisplay = ColorPicker:FindFirstChild("ColorDisplay", true)
+
+		Label.Text = Name
+		Config.Value = Default
+		ColorPicker.LayoutOrder = Config.LayoutOrder or 0
+
+		local function SetColor(Color)
+			Config.Value = Color
+			ColorDisplay.BackgroundColor3 = Color
+			Callback(Color)
+		end
+
+		ColorDisplay.Activated:Connect(function()
+			-- Open color picker menu (implement custom color picker UI here)
+		end)
+
+		SetColor(Default)
+
+		local ColorPickerClass = self:NewInstance(ColorPicker, Config)
+
+		function ColorPickerClass:SetValue(Color)
+			SetColor(Color)
+			return self
+		end
+
+		return ColorPickerClass
+	end
+	
+	--// KEYBIND PICKER
+	function ContainerClass:AddKeybind(Config)
+		Config = Config or {}
+		local Name = Config.Name or "Keybind"
+		local Default = Config.Default or Enum.KeyCode.E
+		local Callback = Config.Callback or NullFunction
+		local Mode = Config.Mode or "Toggle"
+
+		local Keybind = Prefabs.Keybind:Clone()
+		local Label = Keybind:FindFirstChild("Label", true)
+		local KeyDisplay = Keybind:FindFirstChild("KeyDisplay", true)
+
+		Label.Text = Name
+		Config.Value = Default
+		Config.Mode = Mode
+		Config.State = false
+		Keybind.LayoutOrder = Config.LayoutOrder or 0
+
+		local Listening = false
+
+		local function SetKey(Key)
+			Config.Value = Key
+			KeyDisplay.Text = Key.Name
+		end
+
+		KeyDisplay.Activated:Connect(function()
+			Listening = true
+			KeyDisplay.Text = "..."
+		end)
+
+		UserInputService.InputBegan:Connect(function(Input, GameProcessed)
+			if GameProcessed then return end
+			
+			if Listening and Input.KeyCode ~= Enum.KeyCode.Unknown then
+				SetKey(Input.KeyCode)
+				Listening = false
+				return
+			end
+			
+			if Input.KeyCode == Config.Value then
+				if Mode == "Toggle" then
+					Config.State = not Config.State
+					Callback(Config.State)
+				elseif Mode == "Hold" then
+					Config.State = true
+					Callback(true)
+				end
+			end
+		end)
+
+		UserInputService.InputEnded:Connect(function(Input, GameProcessed)
+			if Input.KeyCode == Config.Value and Mode == "Hold" then
+				Config.State = false
+				Callback(false)
+			end
+		end)
+
+		SetKey(Default)
+
+		local KeybindClass = self:NewInstance(Keybind, Config)
+
+		function KeybindClass:SetValue(Key)
+			SetKey(Key)
+			return self
+		end
+
+		return KeybindClass
+	end
+	
+	--// LABEL (Draggable)
+	function ContainerClass:AddLabel(Config)
+		Config = Config or {}
+		local Text = Config.Text or "Label"
+		local Draggable = Config.Draggable or false
+		local Center = Config.Center or false
+
+		local Label = Prefabs.Label:Clone()
+		local TextLabel = Label:FindFirstChild("TextLabel", true)
+
+		TextLabel.Text = Text
+		Label.LayoutOrder = Config.LayoutOrder or 0
+		
+		if Center then
+			TextLabel.TextXAlignment = Enum.TextXAlignment.Center
+		end
+
+		if Draggable then
+			ImGui:ApplyDraggable(Label)
+		end
+
+		local LabelClass = self:NewInstance(Label, Config)
+
+		function LabelClass:SetText(NewText)
+			TextLabel.Text = NewText
+			return self
+		end
+
+		table.insert(ImGui.Labels, LabelClass)
+		return LabelClass
+	end
+	
+	--// DIVIDER
+	function ContainerClass:AddDivider(Config)
+		Config = Config or {}
+		local Divider = ImGui:CreateInstance("Frame", Frame, {
+			Name = "Divider", BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+			BorderSizePixel = 0, Size = UDim2.new(1, -10, 0, 1),
+			LayoutOrder = Config.LayoutOrder or 0
+		})
+		return Divider
+	end
+	
+	--// SPACER
+	function ContainerClass:AddSpacer(Config)
+		Config = Config or {}
+		local Height = Config.Height or 10
+		local Spacer = ImGui:CreateInstance("Frame", Frame, {
+			Name = "Spacer", BackgroundTransparency = 1, BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 0, Height), LayoutOrder = Config.LayoutOrder or 0
+		})
+		return Spacer
+	end
+	
+	--// MULTI-TOGGLE (Radio Buttons)
+	function ContainerClass:AddMultiToggle(Config)
+		Config = Config or {}
+		local Name = Config.Name or "Multi Toggle"
+		local Options = Config.Options or {"Option 1", "Option 2"}
+		local Default = Config.Default or Options[1]
+		local Callback = Config.Callback or NullFunction
+
+		local MultiToggle = ImGui:CreateInstance("Frame", Frame, {
+			Name = "MultiToggle", BackgroundTransparency = 1,
+			Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = Config.LayoutOrder or 0
+		})
+		
+		ImGui:CreateInstance("UIListLayout", MultiToggle, {
+			Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder
+		})
+		
+		ImGui:CreateInstance("TextLabel", MultiToggle, {
+			Name = "Title", BackgroundTransparency = 1, Text = Name,
+			TextColor3 = Color3.new(1, 1, 1), TextSize = 14, Font = Enum.Font.GothamBold,
+			TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 0
+		})
+		
+		Config.Value = Default
+		local Buttons = {}
+		
+		local function UpdateSelection(Selected)
+			Config.Value = Selected
+			for _, Button in pairs(Buttons) do
+				ImGui:Tween(Button.Button, {
+					BackgroundColor3 = Button.Option == Selected and Color3.fromRGB(125, 85, 255) or Color3.fromRGB(40, 40, 40)
+				})
+			end
+			Callback(Selected)
+		end
+		
+		for i, Option in ipairs(Options) do
+			local OptionButton = ImGui:CreateInstance("TextButton", MultiToggle, {
+				Name = "Option_" .. i, BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+				BorderSizePixel = 0, Text = Option, TextColor3 = Color3.new(1, 1, 1),
+				TextSize = 14, Font = Enum.Font.Code, Size = UDim2.new(1, 0, 0, 32),
+				LayoutOrder = i, AutoButtonColor = false
+			})
+			
+			ImGui:CreateInstance("UICorner", OptionButton, {CornerRadius = UDim.new(0, 4)})
+			
+			OptionButton.Activated:Connect(function()
+				UpdateSelection(Option)
+			end)
+			
+			ImGui:ApplyAnimations(OptionButton, "Buttons")
+			Buttons[i] = {Button = OptionButton, Option = Option}
+		end
+		
+		UpdateSelection(Default)
+		
+		local MultiToggleClass = self:NewInstance(MultiToggle, Config)
+		
+		function MultiToggleClass:SetValue(Value)
+			UpdateSelection(Value)
+			return self
+		end
+		
+		return MultiToggleClass
+	end
+	
+	--// TABBOX (Sub-tabs within content)
+	function ContainerClass:AddTabBox(Config)
+		Config = Config or {}
+		local Name = Config.Name or "TabBox"
+		
+		local TabBox = ImGui:CreateInstance("Frame", Frame, {
+			Name = "TabBox", BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+			BorderSizePixel = 0, Size = UDim2.new(1, -10, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = Config.LayoutOrder or 0
+		})
+		
+		ImGui:CreateInstance("UICorner", TabBox, {CornerRadius = UDim.new(0, ImGui.CornerRadius)})
+		ImGui:CreateInstance("UIStroke", TabBox, {Color = Color3.fromRGB(40, 40, 40), Thickness = 1})
+		ImGui:CreateInstance("UIPadding", TabBox, {
+			PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8),
+			PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8)
+		})
+		ImGui:CreateInstance("UIListLayout", TabBox, {
+			Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder
+		})
+		
+		local TabButtons = ImGui:CreateInstance("Frame", TabBox, {
+			Name = "TabButtons", BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 0
+		})
+		
+		ImGui:CreateInstance("UIListLayout", TabButtons, {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder
+		})
+		
+		local ContentContainer = ImGui:CreateInstance("Frame", TabBox, {
+			Name = "ContentContainer", BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1
+		})
+		
+		local TabBoxClass = {
+			Tabs = {},
+			ActiveTab = nil,
+			TabButtons = TabButtons,
+			ContentContainer = ContentContainer
+		}
+		
+		function TabBoxClass:AddTab(TabConfig)
+			TabConfig = TabConfig or {}
+			local TabName = TabConfig.Name or "Tab"
+			
+			local TabButton = ImGui:CreateInstance("TextButton", TabButtons, {
+				Name = "Tab_" .. TabName, BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+				BorderSizePixel = 0, Text = TabName, TextColor3 = Color3.new(1, 1, 1),
+				TextSize = 14, Font = Enum.Font.Code, Size = UDim2.new(0, 100, 1, 0),
+				AutoButtonColor = false
+			})
+			
+			ImGui:CreateInstance("UICorner", TabButton, {CornerRadius = UDim.new(0, 4)})
+			
+			local TabContent = ImGui:CreateInstance("Frame", ContentContainer, {
+				Name = "TabContent_" .. TabName, BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false
+			})
+			
+			ImGui:CreateInstance("UIListLayout", TabContent, {
+				Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder
+			})
+			
+			local Tab = ImGui:ContainerClass(TabContent, TabConfig, Window)
+			Tab.Button = TabButton
+			Tab.Content = TabContent
+			
+			TabButton.Activated:Connect(function()
+				TabBoxClass:ShowTab(Tab)
+			end)
+			
+			ImGui:ApplyAnimations(TabButton, "Tabs")
+			
+			table.insert(TabBoxClass.Tabs, Tab)
+			
+			if not TabBoxClass.ActiveTab then
+				TabBoxClass:ShowTab(Tab)
+			end
+			
+			return Tab
+		end
+		
+		function TabBoxClass:ShowTab(Tab)
+			for _, OtherTab in ipairs(self.Tabs) do
+				OtherTab.Content.Visible = false
+				ImGui:Tween(OtherTab.Button, {BackgroundColor3 = Color3.fromRGB(40, 40, 40)})
+			end
+			
+			Tab.Content.Visible = true
+			ImGui:Tween(Tab.Button, {BackgroundColor3 = Color3.fromRGB(125, 85, 255)})
+			
+			self.ActiveTab = Tab
+		end
+		
+		setmetatable(TabBoxClass, {__index = ContainerClass})
+		
+		return TabBoxClass
+	end
+
+	return ContainerClass
+end
+
+--// Animation & Tween Functions
+function ImGui:GetAnimation(IgnoreAnimationSpeed)
+	local AnimSpeed = IgnoreAnimationSpeed and 1 or self.AnimationSpeed or 1
+	return TweenInfo.new(self.Animation.Time * AnimSpeed, self.Animation.EasingStyle, self.Animation.EasingDirection)
+end
+
+function ImGui:Tween(Instance, Properties, TweenInfoOverwrite, NoAnimation)
+	local TInfo = TweenInfoOverwrite or self:GetAnimation()
+
+	if NoAnimation then 
+		for Key, Value in pairs(Properties) do
+			Instance[Key] = Value
+		end
+		return
+	end
+
+	local Tween = TweenService:Create(Instance, TInfo, Properties)
+	Tween:Play()
+	return Tween
+end
+
+function ImGui:ApplyAnimations(GuiButton, Type)
+	local AnimationsList = self.Animations[Type]
+	if not AnimationsList then return end
+
+	GuiButton.MouseEnter:Connect(function()
+		self:Tween(GuiButton, AnimationsList.MouseEnter)
+	end)
+	GuiButton.MouseLeave:Connect(function()
+		self:Tween(GuiButton, AnimationsList.MouseLeave)
+	end)
+end
+
+function ImGui:HeaderAnimate(Frame, Animation, Show, ...)
+	local List = Frame:GetChildren()
+
+	for _, Child in ipairs({...}) do
+		table.insert(List, Child)
+	end
+
+	for _, GuiObject in ipairs(List) do
+		if not GuiObject:IsA("GuiObject") then continue end
+
+		local TargetSize = GuiObject:GetAttribute("TargetSize")
+		if not TargetSize then
+			GuiObject:SetAttribute("TargetSize", GuiObject.Size)
+			TargetSize = GuiObject.Size
+		end
+
+		if not Animation then
+			GuiObject.Size = Show and TargetSize or UDim2.fromScale(TargetSize.X.Scale, 0)
+			GuiObject.Visible = Show
+			continue
+		end
+
+		self:Tween(GuiObject, {
+			Size = Show and TargetSize or UDim2.fromScale(TargetSize.X.Scale, 0)
+		})
+
+		if not Show then
+			task.wait(self.Animation.Time)
+			GuiObject.Visible = Show
+		else
+			GuiObject.Visible = Show
+		end
+	end
+end
+
+function ImGui:ConnectHover(Config)
+	local OnInput = Config.OnInput
+	local Parent = Config.Parent
+
+	Parent.MouseEnter:Connect(function()
+		OnInput(true, {UserInputType = Enum.UserInputType.MouseMovement})
+	end)
+	Parent.MouseLeave:Connect(function()
+		OnInput(false, {UserInputType = Enum.UserInputType.MouseMovement})
+	end)
+
+	Parent.InputBegan:Connect(function(Input)
+		if Input.UserInputType.Name:find("Touch") then
+			OnInput(true, Input)
+		end
+	end)
+	Parent.InputEnded:Connect(function(Input)
+		if Input.UserInputType.Name:find("Touch") then
+			OnInput(false, Input)
+		end
+	end)
+end
+
+function ImGui:ApplyDraggable(Frame, DragFrame)
+	DragFrame = DragFrame or Frame
+
+	local Dragging = false
+	local DragStart, StartPos
+
+	DragFrame.InputBegan:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch1 then
+			Dragging = true
+			DragStart = Input.Position
+			StartPos = Frame.Position
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(Input)
+		if Dragging and (Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch1) then
+			local Delta = Input.Position - DragStart
+			Frame.Position = UDim2.new(
+				StartPos.X.Scale,
+				StartPos.X.Offset + Delta.X,
+				StartPos.Y.Scale,
+				StartPos.Y.Offset + Delta.Y
+			)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch1 then
+			Dragging = false
+		end
+	end)
+end
+
+function ImGui:ApplyResizable(MinSize, Window, Resize, WindowConfig)
+	local Resizing = false
+	local ResizeStart, StartSize
+
+	Resize.InputBegan:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch1 then
+			Resizing = true
+			ResizeStart = Input.Position
+			StartSize = Window.AbsoluteSize
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(Input)
+		if Resizing and (Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch1) then
+			local Delta = Input.Position - ResizeStart
+			local NewSize = Vector2.new(
+				math.max(StartSize.X + Delta.X, MinSize.X),
+				math.max(StartSize.Y + Delta.Y, MinSize.Y)
+			)
+			WindowConfig:SetSize(NewSize)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch1 then
+			Resizing = false
+		end
+	end)
+end
+
+function ImGui:ApplyWindowSelectEffect(Window, TitleBar)
+	local UIStroke = Window:FindFirstChildOfClass("UIStroke")
+
+	local Colors = {
+		Selected = {BackgroundColor3 = Color3.fromRGB(30, 30, 30)},
+		Deselected = {BackgroundColor3 = Color3.fromRGB(0, 0, 0)}
+	}
+
+	local function SetSelected(Selected)
+		local Animations = self.Animations
+		local Type = Selected and "Selected" or "Deselected"
+
+		self:Tween(TitleBar, Colors[Type])
+		self:Tween(UIStroke, Animations.WindowBorder[Type])
+	end
+
+	self:ConnectHover({
+		Parent = Window,
+		OnInput = function(MouseHovering, Input)
+			if Input.UserInputType.Name:find("Mouse") then
+				SetSelected(MouseHovering)
+			end
+		end,
+	})
+end
+
+function ImGui:SetWindowProps(Properties, IgnoreWindows)
+	local Module = {OldProperties = {}}
+
+	for Window in pairs(self.Windows) do
+		if table.find(IgnoreWindows, Window) then continue end
+
+		local OldValues = {}
+		Module.OldProperties[Window] = OldValues
+
+		for Key, Value in pairs(Properties) do
+			OldValues[Key] = Window[Key]
+			Window[Key] = Value
+		end
+	end
+
+	function Module:Revert()
+		for Window in pairs(ImGui.Windows) do
+			local OldValues = Module.OldProperties[Window]
+			if not OldValues then continue end
+
+			for Key, Value in pairs(OldValues) do
+				Window[Key] = Value
+			end
+		end
+	end
+
+	return Module
+end
+
+--// Window Creation (Continued from original)
+function ImGui:CreateWindow(WindowConfig)
+	local Window = Prefabs.Window:Clone()
+	Window.Parent = self.ScreenGui
+	Window.Visible = true
+	WindowConfig.Window = Window
+
+	local Content = Window.Content
+	local Body = Content.Body
+
+	local Resize = Window.ResizeGrab
+	Resize.Visible = WindowConfig.NoResize ~= true
+
+	local MinSize = WindowConfig.MinSize or Vector2.new(160, 90)
+	self:ApplyResizable(MinSize, Window, Resize, WindowConfig)
+
+	local TitleBar = Content.TitleBar
+	TitleBar.Visible = WindowConfig.NoTitleBar ~= true
+
+	local Toggle = TitleBar.Left.Toggle
+	Toggle.Visible = WindowConfig.NoCollapse ~= true
+	self:ApplyAnimations(Toggle.ToggleButton, "Tabs")
+
+	local ToolBar = Content.ToolBar
+	ToolBar.Visible = WindowConfig.TabsBar ~= false
+
+	if not WindowConfig.NoDrag then
+		self:ApplyDraggable(Window)
+	end
+
+	local CloseButton = TitleBar.Close
+	CloseButton.Visible = WindowConfig.NoClose ~= true
+
+	function WindowConfig:Close()
+		local Callback = WindowConfig.CloseCallback
+		WindowConfig:SetVisible(false)
+		if Callback then
+			Callback(WindowConfig)
+		end
+		return WindowConfig
+	end
+	CloseButton.Activated:Connect(WindowConfig.Close)
+
+	function WindowConfig:GetHeaderSizeY()
+		local ToolbarY = ToolBar.Visible and ToolBar.AbsoluteSize.Y or 0
+		local TitlebarY = TitleBar.Visible and TitleBar.AbsoluteSize.Y or 0
+		return ToolbarY + TitlebarY
+	end
+
+	function WindowConfig:UpdateBody()
+		local HeaderSizeY = self:GetHeaderSizeY()
+		Body.Size = UDim2.new(1, 0, 1, -HeaderSizeY)
+	end
+	WindowConfig:UpdateBody()
+
+	WindowConfig.Open = true
+	function WindowConfig:SetOpen(Open, NoAnimation)
+		local WindowAbSize = Window.AbsoluteSize 
+		local TitleBarSize = TitleBar.AbsoluteSize 
+
+		self.Open = Open
+
+		ImGui:HeaderAnimate(TitleBar, true, Open, TitleBar, Toggle.ToggleButton)
+		ImGui:Tween(Resize, {
+			TextTransparency = Open and 0.6 or 1,
+			Interactable = Open
+		}, nil, NoAnimation)
+		ImGui:Tween(Window, {
+			Size = Open and self.Size or UDim2.fromOffset(WindowAbSize.X, TitleBarSize.Y)
+		}, nil, NoAnimation)
+		ImGui:Tween(Body, {
+			Visible = Open
+		}, nil, NoAnimation)
+		return self
+	end
+
+	function WindowConfig:SetVisible(Visible)
+		Window.Visible = Visible 
+		return self
+	end
+
+	function WindowConfig:SetTitle(Text)
+		TitleBar.Left.Title.Text = tostring(Text)
+		return self
+	end
+	
+	function WindowConfig:Remove()
+		Window:Destroy()
+		return self
+	end
+
+	Toggle.ToggleButton.Activated:Connect(function()
+		local Open = not WindowConfig.Open
+		WindowConfig.Open = Open
+		return WindowConfig:SetOpen(Open)
+	end)	
+
+	function WindowConfig:CreateTab(Config)
+		local Name = Config.Name or ""
+		local TabButton = ToolBar.TabButton:Clone()
+		TabButton.Name = Name
+		TabButton.Text = Name
+		TabButton.Visible = true
+		TabButton.Parent = ToolBar
+		Config.Button = TabButton
+
+		local AutoSizeAxis = WindowConfig.AutoSize or "Y"
+		local Content = Body.Template:Clone()
+		Content.AutomaticSize = Enum.AutomaticSize[AutoSizeAxis]
+		Content.Visible = Config.Visible or false
+		Content.Name = Name
+		Content.Parent = Body
+		Config.Content = Content
+
+		if AutoSizeAxis == "Y" then
+			Content.Size = UDim2.fromScale(1, 0)
+		elseif AutoSizeAxis == "X" then
+			Content.Size = UDim2.fromScale(0, 1)
+		end
+
+		TabButton.Activated:Connect(function()
+			WindowConfig:ShowTab(Config)
+		end)
+
+		function Config:GetContentSize()
+			return Content.AbsoluteSize
+		end
+
+		Config = ImGui:ContainerClass(Content, Config, Window)
+		ImGui:ApplyAnimations(TabButton, "Tabs")
+
+		self:UpdateBody()
+		if WindowConfig.AutoSize then
+			Content:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+				local Size = Config:GetContentSize()
+				self:SetSize(Size)
+			end)
+		end
+
+		return Config
+	end
+
+	function WindowConfig:SetPosition(Position)
+		Window.Position = Position
+		return self
+	end
+
+	function WindowConfig:SetSize(Size)
+		local HeaderSizeY = self:GetHeaderSizeY()
+
+		if typeof(Size) == "Vector2" then
+			Size = UDim2.fromOffset(Size.X, Size.Y)
+		end
+
+		local NewSize = UDim2.new(
+			Size.X.Scale,
+			Size.X.Offset,
+			Size.Y.Scale,
+			Size.Y.Offset + HeaderSizeY
+		)
+		self.Size = NewSize
+		Window.Size = NewSize
+
+		return self
+	end
+
+	function WindowConfig:ShowTab(TabClass)
+		local TargetPage = TabClass.Content
+
+		if not TargetPage.Visible and not TabClass.NoAnimation then
+			TargetPage.Position = UDim2.fromOffset(0, 5)
+		end
+
+		for _, Page in ipairs(Body:GetChildren()) do
+			Page.Visible = Page == TargetPage
+		end
+
+		ImGui:Tween(TargetPage, {Position = UDim2.fromOffset(0, 0)})
+		return self
+	end
+
+	function WindowConfig:Center()
+		local Size = Window.AbsoluteSize
+		local Position = UDim2.new(0.5, -Size.X/2, 0.5, -Size.Y/2)
+		self:SetPosition(Position)
+		return self
+	end
+
+	WindowConfig:SetTitle(WindowConfig.Title or "Depso UI Enhanced")
+
+	if not WindowConfig.Open then
+		WindowConfig:SetOpen(WindowConfig.Open or true, true)
+	end
+
+	self.Windows[Window] = WindowConfig
+	self:CheckStyles(Window, WindowConfig, WindowConfig.Colors)
+
+	if not WindowConfig.NoSelectEffect then
+		self:ApplyWindowSelectEffect(Window, TitleBar)
+	end
+
+	return self:MergeMetatables(WindowConfig, Window)
+end
+
+--// Modal Creation
+function ImGui:CreateModal(Config)
+	local ModalEffect = Prefabs.ModalEffect:Clone()
+	ModalEffect.BackgroundTransparency = 1
+	ModalEffect.Parent = self.FullScreenGui
+	ModalEffect.Visible = true
+
+	self:Tween(ModalEffect, {BackgroundTransparency = 0.6})
+
+	Config = Config or {}
+	Config.TabsBar = Config.TabsBar ~= nil and Config.TabsBar or false
+	Config.NoCollapse = true
+	Config.NoResize = true
+	Config.NoClose = true
+	Config.NoSelectEffect = true
+	Config.Parent = ModalEffect
+
+	Config.AnchorPoint = Vector2.new(0.5, 0.5)
+	Config.Position = UDim2.fromScale(0.5, 0.5)
+
+	local Window = self:CreateWindow(Config)
+	Config = Window:CreateTab({Visible = true})
+
+	local WindowManger = self:SetWindowProps({Interactable = false}, {Window.Window})
+
+	local WindowClose = Window.Close
+	function Config:Close()
+		local Tween = ImGui:Tween(ModalEffect, {BackgroundTransparency = 1})
+		Tween.Completed:Connect(function()
+			ModalEffect:Destroy()
+		end)
+
+		WindowManger:Revert()
+		WindowClose()
+	end
+
+	return Config
+end
+
+--// Notification System
+function ImGui:Notify(Config)
+	Config = Config or {}
+	local Title = Config.Title or "Notification"
+	local Description = Config.Description or ""
+	local Duration = Config.Duration or 5
+	local Icon = Config.Icon or nil
+	
+	local Notification = Prefabs.Notification:Clone()
+	Notification.Parent = self.ScreenGui
+	Notification.Position = UDim2.new(1, -10, 1, 10)
+	
+	local TitleLabel = Notification:FindFirstChild("Title", true)
+	local DescLabel = Notification:FindFirstChild("Description", true)
+	local IconImage = Notification:FindFirstChild("Icon", true)
+	
+	TitleLabel.Text = Title
+	DescLabel.Text = Description
+	
+	if Icon then
+		IconImage.Image = Icon
+		IconImage.Visible = true
+	else
+		IconImage.Visible = false
+	end
+	
+	Notification.Visible = true
+	self:Tween(Notification, {
+		Position = UDim2.new(1, -10 - Notification.AbsoluteSize.X, 1, -10 - Notification.AbsoluteSize.Y)
+	})
+	
+	task.wait(Duration)
+	
+	local Tween = self:Tween(Notification, {
+		Position = UDim2.new(1, -10, 1, -10 - Notification.AbsoluteSize.Y)
+	})
+	
+	Tween.Completed:Connect(function()
+		Notification:Destroy()
+	end)
+	
+	table.insert(self.Notifications, Notification)
+end
+
+--// Context Menu System
+function ImGui:CreateContextMenu(Config)
+	Config = Config or {}
+	local Options = Config.Options or {}
+	
+	local ContextMenu = self:CreateInstance("Frame", self.ScreenGui, {
+		Name = "ContextMenu", BackgroundColor3 = Color3.fromRGB(25, 25, 25),
+		BorderSizePixel = 0, Size = UDim2.fromOffset(200, 0),
+		Position = UDim2.fromOffset(Mouse.X, Mouse.Y), Visible = false,
+		ZIndex = 10000, AutomaticSize = Enum.AutomaticSize.Y
+	})
+	
+	self:CreateInstance("UICorner", ContextMenu, {CornerRadius = UDim.new(0, 4)})
+	self:CreateInstance("UIStroke", ContextMenu, {Color = Color3.fromRGB(40, 40, 40), Thickness = 1})
+	self:CreateInstance("UIListLayout", ContextMenu, {Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder})
+	self:CreateInstance("UIPadding", ContextMenu, {
+		PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4),
+		PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4)
+	})
+	
+	for i, Option in ipairs(Options) do
+		local OptionButton = self:CreateInstance("TextButton", ContextMenu, {
+			Name = "Option_" .. i, BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+			BorderSizePixel = 0, Text = Option.Text or "Option",
+			TextColor3 = Color3.new(1, 1, 1), TextSize = 14, Font = Enum.Font.Code,
+			Size = UDim2.new(1, 0, 0, 32), TextXAlignment = Enum.TextXAlignment.Left,
+			AutoButtonColor = false
+		})
+		
+		self:CreateInstance("UICorner", OptionButton, {CornerRadius = UDim.new(0, 4)})
+		self:CreateInstance("UIPadding", OptionButton, {PaddingLeft = UDim.new(0, 8)})
+		
+		OptionButton.Activated:Connect(function()
+			if Option.Callback then
+				Option.Callback()
+			end
+			ContextMenu.Visible = false
+		end)
+		
+		self:ApplyAnimations(OptionButton, "Buttons")
+	end
+	
+	function ContextMenu:Show(Position)
+		self.Position = Position or UDim2.fromOffset(Mouse.X, Mouse.Y)
+		self.Visible = true
+	end
+	
+	function ContextMenu:Hide()
+		self.Visible = false
+	end
+	
+	return ContextMenu
+end
+
+--// Initialize GUI Parents
+local GuiParent = IsStudio and PlayerGui or CoreGui
+ImGui.ScreenGui = ImGui:CreateInstance("ScreenGui", GuiParent, {
+	DisplayOrder = 9999,
+	ResetOnSpawn = false
+})
+ImGui.FullScreenGui = ImGui:CreateInstance("ScreenGui", GuiParent, {
+	DisplayOrder = 99999,
+	ResetOnSpawn = false,
+	ScreenInsets = Enum.ScreenInsets.None
+})
+
+--// Cleanup Function
+function ImGui:Unload()
+	if self.ScreenGui then
+		self.ScreenGui:Destroy()
+	end
+	if self.FullScreenGui then
+		self.FullScreenGui:Destroy()
+	end
+	
+	for _, Tooltip in ipairs(self.Tooltips) do
+		if Tooltip.Frame then
+			Tooltip.Frame:Destroy()
+		end
+	end
+	
+	self.Windows = {}
+	self.Labels = {}
+	self.Buttons = {}
+	self.Toggles = {}
+	self.Options = {}
+	self.Tooltips = {}
+	self.DependencyBoxes = {}
+	self.Notifications = {}
+end
+
+return ImGui
